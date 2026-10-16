@@ -1,0 +1,15 @@
+-- .zdirk e2e: a second game in the same zip (like Hayate/HayatePSX),
+-- launched through a shortcut Zalt.dirk next to Zgame.zdirk.
+OVERLAY_UPDATED = 1
+local done = false
+function onOverlayUpdate()
+  if done then return OVERLAY_UPDATED end
+  done = true
+  local DIR = singeGetScriptPath():match("(.*[/\\])")
+  local s = spriteLoad(DIR .. "Overlay/pic.png")
+  print("ZCHECK alt=" .. spriteGetWidth(s) .. "x" .. spriteGetHeight(s))
+  discPlay()
+  return OVERLAY_UPDATED
+end
+function onInputPressed(what) end
+function onInputReleased(what) end

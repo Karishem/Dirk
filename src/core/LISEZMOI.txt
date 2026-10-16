@@ -1,0 +1,53 @@
+dirk_settings.cfg redevient un simple reglage d'usine
+========================================================================
+
+Ce que ca change
+------------------------------------------------------------------------
+Avant : chaque changement en direct (touches F10/F11/F12, ou le menu UI
+Options d'un jeu tant que l'ecran n'est pas quitte) re-ecrivait
+KimmyScript/Cfg/dirk_settings.cfg, le fichier PARTAGE entre tous les
+jeux. Resultat : la derniere partie jouee decidait du reglage de depart
+de TOUS les autres jeux qui n'ont pas encore leur propre choix sauve
+(exactement le bug deja vu avec Generate Log qui passait de Titan_AE a
+Hayate_HD).
+
+Maintenant : dirk_settings.cfg n'est plus jamais ecrit par le moteur. Il
+est encore lu une fois au demarrage (reglage d'usine si un jeu n'a
+vraiment rien de sauve), mais chaque changement en direct (touche ou
+menu) va desormais s'ecrire directement dans le Cfg/game.cfg DU JEU EN
+COURS -- les 6 lignes dirk_Fullscreen / dirk_VolumeVldp /
+dirk_VolumeNonVldp / dirk_Scanlines / dirk_BezelEnabled /
+dirk_GenerateLog sont mises a jour (ou ajoutees si absentes) sans
+toucher aux 37 lignes dip_*/mycolor*/... du jeu, qui restent exactement
+comme elles etaient.
+
+Cas particulier : si le jeu n'a encore AUCUN Cfg/game.cfg complet (jeu
+tout neuf, jamais ouvert son propre menu Options), une touche F10/F11/F12
+ne peut pas fabriquer ce fichier sans connaitre les ~37 autres valeurs du
+jeu -- le changement reste donc valable pour la session en cours
+seulement, jusqu'a ce que le joueur ouvre une fois le menu du jeu (qui
+sauvegardera alors tout, y compris le dernier reglage F10/F11/F12).
+
+Fichiers a remplacer
+------------------------------------------------------------------------
+  1. src/core/main.cpp
+  2. src/core/LaunchSettings.h
+  3. src/core/LaunchSettings.cpp
+
+Installation : copie ces 3 fichiers a la meme place dans ton arbre SDL3,
+recompile (cmake --build . --target dirk). Rien d'autre a changer.
+
+Verifie par de vraies executions du moteur (pas de simulation), touches
+envoyees reellement via xdotool sur une vraie fenetre SDL :
+  - F12 sur un jeu dont le game.cfg n'a encore que les 37 lignes dip_* :
+    les 6 lignes dirk_* sont ajoutees a la fin, avec dirk_Scanlines a 1
+    (bascule) et le reste aux valeurs d'usine -- les 37 lignes dip_*
+    restent identiques au caractere pres, et dirk_settings.cfg n'est
+    jamais cree.
+  - F10 juste apres, sur le meme jeu : la ligne dirk_Fullscreen passe a
+    0 EN PLACE (pas de doublon, toujours 43 lignes), dirk_Scanlines
+    garde la valeur laissee par F12 juste avant, dirk_settings.cfg
+    toujours absent.
+  - F12 sur un jeu qui n'a AUCUN Cfg/game.cfg du tout : aucun plantage,
+    aucun fichier cree (ni game.cfg, ni dirk_settings.cfg) -- le
+    changement reste juste local a la session, comme prevu.

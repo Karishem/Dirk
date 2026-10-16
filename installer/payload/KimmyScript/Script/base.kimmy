@@ -1,0 +1,200 @@
+--[[
+
+PROGRAM NAME:	KIMMY SCRIPT
+VERSION:		4.1
+AUTHOR:			KARIS (2020/2026)
+
+This file is part of KIMMY SCRIPT.
+
+	KIMMY SCRIPT is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation.
+
+	KIMMY SCRIPT is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+]]--
+
+-- base.kimmy: the few names KimmyScript, the games and
+-- controls.cfg need from the engine, written for Dirk. Loaded first by
+-- globals.kimmy.
+--
+--   1. DIR          the game's folder
+--   2. SWITCH_*     the game actions Dirk sends to onInputPressed()
+--   3. Constants    OVERLAY_*, FONT_QUALITY_*, SOUND_*
+--   4. KEY_*        keyboard keys, for controls.cfg
+--   5. JOY_*        game controllers (Xbox-type), for controls.cfg
+--   6. MOUSE_*      mouse buttons, for controls.cfg
+
+
+-- 1. DIR ---------------------------------------------------------------------
+-- The game's own folder, with its final separator
+-- (e.g. "E:\Dirk Games\Chantze_HD\"). A file of the game: DIR.."Cfg/game.cfg"
+
+DIR = "./"
+if dirkGetScriptPath ~= nil then
+	DIR = dirkGetScriptPath():match("(.*[/\\])") or "./"
+end
+
+
+-- 2. SWITCH_* ----------------------------------------------------------------
+-- The number Dirk passes to onInputPressed() / onInputReleased() for each
+-- action of controls.cfg (GO_UP, BUTTON_1, COIN_1P...).
+
+SWITCH_UP         = 0		-- GO_UP
+SWITCH_LEFT       = 1		-- GO_LEFT
+SWITCH_DOWN       = 2		-- GO_DOWN
+SWITCH_RIGHT      = 3		-- GO_RIGHT
+SWITCH_START1     = 4		-- START_1P
+SWITCH_START2     = 5		-- START_2P
+SWITCH_BUTTON1    = 6		-- BUTTON_1
+SWITCH_BUTTON2    = 7		-- BUTTON_2
+SWITCH_BUTTON3    = 8		-- BUTTON_3
+SWITCH_COIN1      = 9		-- COIN_1P
+SWITCH_COIN2      = 10		-- COIN_2P
+SWITCH_SKILL1     = 11		-- SAVE_1
+SWITCH_SKILL2     = 12		-- SAVE_2
+SWITCH_SKILL3     = 13		-- SAVE_3
+SWITCH_SERVICE    = 14		-- OPTION_MENU
+SWITCH_TEST       = 15		-- SAVE_MENU
+SWITCH_RESET      = 16		-- RESET_CPU
+SWITCH_SCREENSHOT = 17		-- SCREENSHOT
+SWITCH_QUIT       = 18		-- QUIT_PROGRAM
+SWITCH_PAUSE      = 19		-- PAUSE_GAME
+SWITCH_CONSOLE    = 20		-- EXIT_MENU
+SWITCH_BUTTON4    = 21		-- BUTTON_4
+SWITCH_TILT       = 22		-- TILT
+SWITCH_GRAB       = 23		-- GRAB
+
+
+-- 3. Constants -----------------------------------------------------------------
+
+OVERLAY_NOT_UPDATED = 0		-- what onOverlayUpdate() returns
+OVERLAY_UPDATED     = 1
+
+FONT_QUALITY_SOLID   = 1	-- for fontQuality()
+FONT_QUALITY_SHADED  = 2
+FONT_QUALITY_BLENDED = 3
+
+SOUND_ERROR_INVALID = -1	-- what soundPlay() can return
+SOUND_ERROR_FULL    = -2
+SOUND_REMOVE_HANDLE = -1
+
+
+-- How controls.cfg entries are made -----------------------------------------
+-- Each key/button below is a small table {name, value}: `value` is the
+-- number Dirk receives for it. Dirk only accepts an entry found in one of
+-- its lists: SCANCODE (keyboard), GAMEPAD_0..GAMEPAD_3 (controllers 1-4),
+-- MOUSE_0 (mouse) -- the names of these lists are fixed by dirk.exe.
+-- (RAWJOY_0..3, for other joysticks, are made by Dirk itself.)
+
+local function addInput(list, name, value)
+	local entry = { name = name, value = value }
+	list[name] = entry
+	_G[name] = entry
+	return entry
+end
+
+
+-- 4. KEY_* -------------------------------------------------------------------
+-- Keyboard keys, named like SDL's scancodes (KEY_A, KEY_F1, KEY_LCTRL,
+-- KEY_KP_ENTER...); the main-keyboard digits are KEY_MAIN_0..KEY_MAIN_9.
+-- Use in controls.cfg:  BUTTON_1 = { KEY_LCTRL, JOY_A }
+
+SCANCODE = {}
+local keys = {
+	A = 4, B = 5, C = 6, D = 7, E = 8, F = 9,
+	G = 10, H = 11, I = 12, J = 13, K = 14, L = 15,
+	M = 16, N = 17, O = 18, P = 19, Q = 20, R = 21,
+	S = 22, T = 23, U = 24, V = 25, W = 26, X = 27,
+	Y = 28, Z = 29, MAIN_1 = 30, MAIN_2 = 31, MAIN_3 = 32, MAIN_4 = 33,
+	MAIN_5 = 34, MAIN_6 = 35, MAIN_7 = 36, MAIN_8 = 37, MAIN_9 = 38, MAIN_0 = 39,
+	RETURN = 40, ESCAPE = 41, BACKSPACE = 42, TAB = 43, SPACE = 44, MINUS = 45,
+	EQUALS = 46, LEFTBRACKET = 47, RIGHTBRACKET = 48, BACKSLASH = 49, NONUSHASH = 50, SEMICOLON = 51,
+	APOSTROPHE = 52, GRAVE = 53, COMMA = 54, PERIOD = 55, SLASH = 56, CAPSLOCK = 57,
+	F1 = 58, F2 = 59, F3 = 60, F4 = 61, F5 = 62, F6 = 63,
+	F7 = 64, F8 = 65, F9 = 66, F10 = 67, F11 = 68, F12 = 69,
+	PRINTSCREEN = 70, SCROLLLOCK = 71, PAUSE = 72, INSERT = 73, HOME = 74, PAGEUP = 75,
+	DELETE = 76, END = 77, PAGEDOWN = 78, RIGHT = 79, LEFT = 80, DOWN = 81,
+	UP = 82, NUMLOCKCLEAR = 83, KP_DIVIDE = 84, KP_MULTIPLY = 85, KP_MINUS = 86, KP_PLUS = 87,
+	KP_ENTER = 88, KP_1 = 89, KP_2 = 90, KP_3 = 91, KP_4 = 92, KP_5 = 93,
+	KP_6 = 94, KP_7 = 95, KP_8 = 96, KP_9 = 97, KP_0 = 98, KP_PERIOD = 99,
+	NONUSBACKSLASH = 100, APPLICATION = 101, POWER = 102, KP_EQUALS = 103, F13 = 104, F14 = 105,
+	F15 = 106, F16 = 107, F17 = 108, F18 = 109, F19 = 110, F20 = 111,
+	F21 = 112, F22 = 113, F23 = 114, F24 = 115, EXECUTE = 116, HELP = 117,
+	MENU = 118, SELECT = 119, STOP = 120, AGAIN = 121, UNDO = 122, CUT = 123,
+	COPY = 124, PASTE = 125, FIND = 126, MUTE = 127, VOLUMEUP = 128, VOLUMEDOWN = 129,
+	KP_COMMA = 133, KP_EQUALSAS400 = 134, INTERNATIONAL1 = 135, INTERNATIONAL2 = 136, INTERNATIONAL3 = 137, INTERNATIONAL4 = 138,
+	INTERNATIONAL5 = 139, INTERNATIONAL6 = 140, INTERNATIONAL7 = 141, INTERNATIONAL8 = 142, INTERNATIONAL9 = 143, LANG1 = 144,
+	LANG2 = 145, LANG3 = 146, LANG4 = 147, LANG5 = 148, LANG6 = 149, LANG7 = 150,
+	LANG8 = 151, LANG9 = 152, ALTERASE = 153, SYSREQ = 154, CANCEL = 155, CLEAR = 156,
+	PRIOR = 157, RETURN2 = 158, SEPARATOR = 159, OUT = 160, OPER = 161, CLEARAGAIN = 162,
+	CRSEL = 163, EXSEL = 164, KP_00 = 176, KP_000 = 177, THOUSANDSSEPARATOR = 178, DECIMALSEPARATOR = 179,
+	CURRENCYUNIT = 180, CURRENCYSUBUNIT = 181, KP_LEFTPAREN = 182, KP_RIGHTPAREN = 183, KP_LEFTBRACE = 184, KP_RIGHTBRACE = 185,
+	KP_TAB = 186, KP_BACKSPACE = 187, KP_A = 188, KP_B = 189, KP_C = 190, KP_D = 191,
+	KP_E = 192, KP_F = 193, KP_XOR = 194, KP_POWER = 195, KP_PERCENT = 196, KP_LESS = 197,
+	KP_GREATER = 198, KP_AMPERSAND = 199, KP_DBLAMPERSAND = 200, KP_VERTICALBAR = 201, KP_DBLVERTICALBAR = 202, KP_COLON = 203,
+	KP_HASH = 204, KP_SPACE = 205, KP_AT = 206, KP_EXCLAM = 207, KP_MEMSTORE = 208, KP_MEMRECALL = 209,
+	KP_MEMCLEAR = 210, KP_MEMADD = 211, KP_MEMSUBTRACT = 212, KP_MEMMULTIPLY = 213, KP_MEMDIVIDE = 214, KP_PLUSMINUS = 215,
+	KP_CLEAR = 216, KP_CLEARENTRY = 217, KP_BINARY = 218, KP_OCTAL = 219, KP_DECIMAL = 220, KP_HEXADECIMAL = 221,
+	LCTRL = 224, LSHIFT = 225, LALT = 226, LGUI = 227, RCTRL = 228, RSHIFT = 229,
+	RALT = 230, RGUI = 231, MODE = 257, SLEEP = 258, WAKE = 259, CHANNEL_INCREMENT = 260,
+	CHANNEL_DECREMENT = 261, MEDIA_PLAY = 262, MEDIA_PAUSE = 263, MEDIA_RECORD = 264, MEDIA_FAST_FORWARD = 265, MEDIA_REWIND = 266,
+	MEDIA_NEXT_TRACK = 267, MEDIA_PREVIOUS_TRACK = 268, MEDIA_STOP = 269, MEDIA_EJECT = 270, MEDIA_PLAY_PAUSE = 271, MEDIA_SELECT = 272,
+	AC_NEW = 273, AC_OPEN = 274, AC_CLOSE = 275, AC_EXIT = 276, AC_SAVE = 277, AC_PRINT = 278,
+	AC_PROPERTIES = 279, AC_SEARCH = 280, AC_HOME = 281, AC_BACK = 282, AC_FORWARD = 283, AC_STOP = 284,
+	AC_REFRESH = 285, AC_BOOKMARKS = 286, SOFTLEFT = 287, SOFTRIGHT = 288, CALL = 289, ENDCALL = 290,
+}
+for name, value in pairs(keys) do
+	addInput(SCANCODE, "KEY_" .. name, value)
+end
+
+
+-- 5. JOY_* -------------------------------------------------------------------
+-- Game controllers Windows recognises (Xbox, PlayStation, Switch Pro...),
+-- named after an Xbox pad. JOY_ is controller 1; JOY2_, JOY3_, JOY4_ the
+-- others (JOY2_A, JOY3_START...).
+-- Dirk's numbering: 500 + 100 per controller; each stick axis / trigger
+-- gives 3 numbers (base, minus, plus); the buttons follow from 518, in
+-- SDL's button order.
+
+local axes = {		-- SDL axis order
+	{ minus = "STICK_LEFT",  plus = "STICK_RIGHT" },	-- left stick X
+	{ minus = "STICK_UP",    plus = "STICK_DOWN" },	-- left stick Y
+	{ minus = "RSTICK_LEFT", plus = "RSTICK_RIGHT" },	-- right stick X
+	{ minus = "RSTICK_UP",   plus = "RSTICK_DOWN" },	-- right stick Y
+	{ plus = "L2" },									-- left trigger
+	{ plus = "R2" },									-- right trigger
+}
+local buttons = {	-- SDL button order
+	"A", "B", "X", "Y", "SELECT", "SPECIAL", "START", "L3", "R3",
+	"L1", "R1", "UP", "DOWN", "LEFT", "RIGHT",
+}
+
+for pad = 0, 3 do
+	local list = {}
+	_G["GAMEPAD_" .. pad] = list
+	local prefix = pad == 0 and "JOY_" or "JOY" .. (pad + 1) .. "_"
+	local base = 500 + pad * 100
+	for i, axis in ipairs(axes) do
+		local first = base + (i - 1) * 3
+		if axis.minus then addInput(list, prefix .. axis.minus, first + 1) end
+		if axis.plus  then addInput(list, prefix .. axis.plus,  first + 2) end
+	end
+	for i, button in ipairs(buttons) do
+		addInput(list, prefix .. button, base + 18 + (i - 1))
+	end
+end
+
+
+-- 6. MOUSE_* -----------------------------------------------------------------
+
+MOUSE_0 = {}
+addInput(MOUSE_0, "MOUSE_LEFT",   1000)
+addInput(MOUSE_0, "MOUSE_RIGHT",  1001)
+addInput(MOUSE_0, "MOUSE_MIDDLE", 1002)
+addInput(MOUSE_0, "MOUSE_X1",     1003)
+addInput(MOUSE_0, "MOUSE_X2",     1004)
+
+

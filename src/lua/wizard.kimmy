@@ -1,0 +1,4049 @@
+--[[
+
+PROGRAM NAME:	KIMMY SCRIPT
+AUTHOR:			KARIS (2020/2026)
+
+This file is part of KIMMY SCRIPT (GNU General Public License).
+
+Wizard creator, the create mode. Put Wizard.exe in a game folder, next to its Movie folder,
+and launch it: the movie is shown without any game, and its frames are
+marked with the stick and the buttons.
+
+	LEFT / RIGHT	one step back / forward (hold to repeat)
+	UP / DOWN		step size: 1, 10, 100, 1000 frames
+	BUTTON1			the menu, made of what can be done here (v48): on a move,
+					EDIT it (or what holds it); elsewhere CREATE MOVE HERE, SPLIT
+					SCENE HERE, INTRO ENDS HERE, JOIN SCENES HERE or CREATE LEVEL
+					HERE, EDIT what is here, CREATE DEATH, CLIP, MENU FRAME HERE.
+					Then B1 again at the other end of what is created; a move
+					then asks for its type and its death. COMBO, MULTI, LOOP,
+					MASH, NOTHING, SKIP and EXIT ask for their inputs in lists
+					first (v41). EDIT lists what can change, with its value
+					(MOVE: UP, DEATH: 1, OR: none, FRAMES: a-b, DELETE); FRAMES
+					is marked again, B1 at each end. Every list starts with
+					EXIT MENU (v48)
+	BUTTON2			GO TO a level, a scene, a move, a death, a clip or a menu
+					frame; the kind chosen is also what L1 / R1 go
+					through (v44; on B4 until v51)
+	BUTTON4			(PAUSE_GAME: P, Y) play / pause (v52; on B2 until v51); while
+					it plays, the moves are shown as in the game (arrows,
+					buttons...) with their name, without any death (v43), and
+					the other buttons do nothing (v53)
+	F1 / L1			the previous level, scene, move... from here (hold to repeat)
+	F2 / R1			the next one
+	BUTTON3			undo (v50); while marking, drop the mark; in a list or
+					the choice of a death, close it
+	START			in a list, close it
+	ESC, START+SELECT	QUIT, after a yes (v48, v50)
+					In the lists, UP / DOWN and LEFT / RIGHT (by 10) repeat
+					while held (v44)
+
+The sheet itself is the work (v32): Wizard reads it, shows on the movie
+what it holds, and changes only the lines of what is marked or edited. The
+rest of the sheet stays as written: comments, names, PATH choices,
+difficulty lines, settings.
+
+	- No sheet in the folder: <folder>.dirk is made, and Wizard works
+	  in it directly.
+	- A sheet made by Wizard (its first line says so): it works in it
+	  directly.
+	- Any other sheet (Titan_AE.dirk...): it is never touched. Wizard
+	  works in a copy, <name>-wizard.dirk, and comes back to that copy the
+	  next times. Among several sheets, OPEN ANOTHER SHEET in the menu of
+	  B1 chooses one.
+
+A LEVEL is marked whole, from its first frame to its last one: its intro is
+its first 2 frames and one scene runs to its end. A SCENE marked in it takes
+its place among the others (they give way), and an empty part left at the
+start of the level becomes the intro. Moves go in the scene where they
+start.
+
+What cannot be played yet (a scene without a move, a PATH whose choices
+lead to a move still to make...) is a "#~" line: KimmyScript reads it as a
+comment, Create as waiting. Once its scene has a move, the "#~" goes away by
+itself. A TIMED stays "#~" until its windows are written under it by hand
+and the "#~" removed. The other moves are written complete.
+
+PATH, YESNO and CHOOSE (v54) are built in lists: inside the scene (next, a
+move after it, or one to make later) or elsewhere (scene n, level n, next
+level), a death everywhere, and where the branches join (go >). A choice
+that leads to a move still to make gets a name (path1, yes1, no1, answer1,
+join1) and the move waits ("# to connect in EDIT: path1"); in its EDIT, the
+choice is led to the move once it is there, which takes the name. The names
+Create made go away when nothing leads to them any more. A CHOOSE is written
+"INSERT QUESTION HERE", "ANSWER 1"..., timer 10: to change in the sheet.
+
+A sheet counting frames from each level (RelativeFrames yes, like Titan) is
+shown and marked in frames of the movie, and written back its own way.
+
+]]--
+
+local SW_UP, SW_LEFT, SW_DOWN, SW_RIGHT, SW_START, SW_B1, SW_B2, SW_B3 = 0, 1, 2, 3, 4, 6, 7, 8
+local SW_PREV = 11			-- SAVE_1 (F1, L1): the previous level, scene, move... (v44)
+local SW_NEXT = 12			-- SAVE_2 (F2, R1): the next one
+local SW_GOTO = SW_B2		-- BUTTON_2: GO TO, which also links L1 / R1 (v44 on B4, v52 on B2)
+local SW_PLAY = 19			-- PAUSE_GAME (P, Y: B4): play / pause (v52, on B2 before)
+local SW_ESC = 20			-- EXIT_MENU (ESC): QUIT, after a yes; in a list, close it (v48)
+local SW_SELECT = 9			-- COIN_1P (SELECT on a pad, 5): with START, QUIT too (v50)
+local downStart, downSelect = false, false	-- START + SELECT held together: QUIT
+
+-- the moves of the sheet (FICHE-mots-cles.md, 8), the most used first;
+-- COMBO, MULTI, LOOP, MASH, NOTHING, SKIP and EXIT then ask for the rest in
+-- lists (v41, BUILDERS)
+local MOVE_TYPES = { "UP", "DOWN", "LEFT", "RIGHT", "B1", "B2", "B3", "UPLEFT", "UPRIGHT", "DOWNLEFT", "DOWNRIGHT",
+	"COMBO", "MULTI", "LOOP", "MASH", "HOLD", "LETGO",
+	"ANYTHING", "NOTHING", "SKIP", "WAY", "EXIT", "PATH", "YESNO", "TIMED", "CHOOSE" }
+local NO_DEATH = { SKIP = true, WAY = true, EXIT = true, CHOOSE = true }
+-- moves written waiting ("#~"), to be finished by hand (COMBO, MULTI and
+-- LOOP only in sheets of before v41: now their lists write them complete)
+-- (PATH, YESNO and CHOOSE are built in lists too from v54: their notes stay
+-- for the sheets of before)
+local TO_FINISH = { TIMED = "write its windows under it",
+	COMBO = "write its two inputs: COMBO LEFT + B1", MULTI = "write its inputs: MULTI L B1 L",
+	LOOP = "write its circle: LOOP U 1 CW" }
+local CLIPS = { "Title", "Intro01", "Intro02", "Intro03", "IntroGame", "GameOver", "GameOverAlt", "NewHScore",
+	"EnterHScore", "Rankings", "Continue", "Clear", "GetReady", "SupDeath", "Quit", "Map", "MovieEnd" }
+local NEEDED_CLIPS = { "Title", "Intro01", "Intro02", "Intro03", "GameOver", "GameOverAlt", "NewHScore", "EnterHScore",
+	"Rankings", "Continue" }
+local ONE_FRAME_CLIPS = { MovieEnd = true }
+local MENUS = { "Menus", "Options", "Victory", "Save", "Rankings", "Controls", "Special", "Hints", "Secret", "Trophy",
+	"Easy", "Normal", "Hard", "Extreme" }
+local NEEDED_MENUS = { "Menus", "Options", "Victory", "Save", "Rankings", "Controls", "Special", "Hints" }
+local STEPS = { 1, 10, 100, 1000 }
+local MARK = "-- Made with Create.dirk"
+local MARK_LINE = "-- Made with Wizard (KimmyScript): it changes only what is marked in it, your own changes stay."
+local WAITING = "#~ "
+local AUTO_END = "end of the last scene"
+local ORPHANS = "outside its scenes"
+local OLD_FINISH = { PATH = "write its choices under it", YESNO = "write yes > and no > under it",
+	CHOOSE = "write its answers under it" }
+local function finishNote(kind)
+	return "   # to finish: " .. (TO_FINISH[kind] or OLD_FINISH[kind] or "write what it needs") .. ", then remove the #~"
+end
+-- a PATH, YESNO or CHOOSE whose choices lead to moves still to make (v54)
+local CONNECT = "# to connect in EDIT: "
+local function connectNote(l) return l:find("# to connect", 1, true) ~= nil end
+
+local DIR = "./"
+if dirkGetScriptPath ~= nil then DIR = dirkGetScriptPath():match("(.*[/\\])") or "./" end
+local NAME = DIR:gsub("[/\\]$", ""):match("([^/\\]+)$") or "Game"
+
+do
+	local new = "./KimmyScript/Cfg/wizard_controls.cfg"
+	local h = io.open(new, "r")
+	if h then h:close() else os.rename("./KimmyScript/Cfg/create_controls.cfg", new) end
+end
+forcedControls = "wizard_controls.cfg"
+local fps, length = nil, nil		-- from the movie's .dirkindex, when Dirk made one
+local load_ = loadstring or load
+
+-- ==========================================================================
+-- 1. The sheet as lines
+-- ==========================================================================
+
+local S = { lines = {}, eol = "\n", lastEol = true, path = nil, from = nil, undo = {}, error = nil, model = nil }
+
+local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+
+-- "#~ " lines: waiting (a comment for KimmyScript)
+local function isWaiting(l) return l:match("^%s*#~") ~= nil end
+local function unwait(l)
+	if l:sub(1, 3) == WAITING then return l:sub(4) end
+	return (l:gsub("^(%s*)#~%s?", "%1", 1))
+end
+local function wait(l) if isWaiting(l) then return l end return WAITING .. l end
+local function isComment(l) return l:match("^%s*#") ~= nil and not isWaiting(l) end
+
+-- the code of a line, and its comment ("#" or "--", not in quotes)
+local function splitComment(l)
+	local q = false
+	for i = 1, #l do
+		local c = l:sub(i, i)
+		if c == '"' then q = not q
+		elseif not q and (c == "#" or (c == "-" and l:sub(i + 1, i + 1) == "-")) then
+			return l:sub(1, i - 1), l:sub(i)
+		end
+	end
+	return l, ""
+end
+
+-- words with their place in the string; "quoted text" is one word
+local function words(s)
+	local t, i = {}, 1
+	while i <= #s do
+		local a = s:find("%S", i)
+		if not a then break end
+		local b
+		if s:sub(a, a) == '"' then b = s:find('"', a + 1, true) or #s
+		else b = (s:find("%s", a) or (#s + 1)) - 1 end
+		t[#t + 1] = { s = s:sub(a, b), u = s:sub(a, b):upper(), i = a, j = b }
+		i = b + 1
+	end
+	return t
+end
+
+local DEATH_WORDS = { OPTIONAL = -1, SCORED = -2, HIDDEN = -3, RANDOM = 0 }
+local function deathWord(d)
+	if d == nil or d == -4 then return ""
+	elseif d == -1 then return "optional" elseif d == -2 then return "scored" elseif d == -3 then return "hidden"
+	elseif d == 0 then return "random" end
+	return tostring(d)
+end
+local function deathOf(w)
+	if not w then return nil end
+	if w.s:match("^%d+$") then return tonumber(w.s) end
+	return DEATH_WORDS[w.u]
+end
+
+-- words of a move that are never its name (EXIT > next level, NOTHING silent...)
+local NOT_NAMES = { LEVEL = true, SCENE = true, NEXT = true, SILENT = true, BLIND = true, HIDDEN = true,
+	AFTER = true, HARDER = true, EASIER = true, OR = true, END = true, SKIP = true, GO = true }
+local function baseKind(kind) return (kind or ""):match("^(%S+)") or "" end
+
+-- a move line: its frames, its move, its death and its name
+local moveParts
+do
+local ARG = { AFTER = true, HARDER = true, EASIER = true }
+local KW = { UP = true, DOWN = true, LEFT = true, RIGHT = true, U = true, D = true, L = true, R = true,
+	UPLEFT = true, UPRIGHT = true, DOWNLEFT = true, DOWNRIGHT = true, UL = true, UR = true, DL = true, DR = true,
+	B1 = true, B2 = true, B3 = true, BUTTON1 = true, BUTTON2 = true, BUTTON3 = true, B1B2 = true, UD = true, DU = true,
+	LR = true, RL = true, CW = true, CCW = true, Q = true, H = true, OR = true }
+function moveParts(text)
+	local code = splitComment(text)
+	local w = words(code)
+	local a, b = code:match("^%s*(%d+)%s*%-%s*(%d+)")
+	if not a then return nil end
+	local rest = {}
+	local from = 4
+	if w[1] and w[1].s:find("-", 1, true) then from = 2 elseif w[2] and w[2].s:match("^%-%d") then from = 3 end
+	for k = from, #w do rest[#rest + 1] = w[k] end
+	local m = { ra = tonumber(a), rb = tonumber(b), words = rest, kind = rest[1] and rest[1].u or "?" }
+	if #rest >= 2 and not NO_DEATH[m.kind] then
+		local n = #rest
+		if deathOf(rest[n]) and not ARG[rest[n - 1].u] then m.dw = n
+		elseif n >= 3 and deathOf(rest[n - 1]) and not ARG[rest[n - 2].u] and rest[n].s:match("^[%a_][%w_]*$") then m.dw = n - 1; m.name = rest[n].s end
+		if m.dw then m.death = deathOf(rest[m.dw])
+		elseif rest[n].s:match("^[%a_][%w_]*$") and not KW[rest[n].u] and not DEATH_WORDS[rest[n].u] and not NOT_NAMES[rest[n].u]
+			and not rest[n].u:match("^X%d+$") and rest[n - 1].s ~= ">" then m.name = rest[n].s end
+	elseif #rest >= 2 then
+		local last = rest[#rest]
+		if last.s:match("^[%a_][%w_]*$") and not DEATH_WORDS[last.u] and not NOT_NAMES[last.u]
+			and rest[#rest - 1].s ~= ">" then m.name = last.s end
+	end
+	-- the move as written, without its death and its name: MULTI "L,B1" after 3
+	local upto = m.dw and (m.dw - 1) or (m.name and (#rest - 1)) or #rest
+	if rest[1] and upto >= 1 then m.text = code:sub(rest[1].i, rest[upto].j) end
+	return m
+end
+end
+
+-- ==========================================================================
+-- 2. Reading the sheet: what each line is
+-- ==========================================================================
+
+local function isDiff(u) return u == "NORMAL:" or u == "HARD:" or u == "EXTREME:" end
+local SECTIONS = { GAME = "GAME", CLIPS = "CLIPS", ["MENU FRAMES"] = "MENU FRAMES", MENUS = "MENU FRAMES",
+	DEATHS = "DEATHS", TIERS = "TIERS" }
+
+local function parse(lines)
+	local M = { levels = {}, deaths = {}, clips = {}, menus = {}, relative = nil, sections = {}, sym = {},
+		sheetLine = nil, endLine = nil }
+	local section, level, scene, move, orphan = nil, nil, nil, nil, false
+	for i, raw in ipairs(lines) do
+		local waiting = isWaiting(raw)
+		local text = waiting and unwait(raw) or raw
+		local code = splitComment(text)
+		local t = trim(code)
+		local w = words(code)
+		local u = w[1] and w[1].u or ""
+		if M.sheetLine == nil then
+			if t:match("^Sheet%s*%[%[") then M.sheetLine = i end
+		elseif M.endLine == nil then
+			if t:match("^%]%]") then
+				M.endLine = i
+			elseif isComment(raw) then
+				-- a comment; Create's header of the moves outside the scenes
+				if level and raw:find(ORPHANS, 1, true) then orphan = true; scene = nil; move = nil end
+			elseif t == "" then
+				-- nothing
+			elseif SECTIONS[t:upper():gsub("%s+", " ")] then
+				section = SECTIONS[t:upper():gsub("%s+", " ")]
+				M.sections[section] = i
+				level, scene, move = nil, nil, nil
+			elseif u == "LEVEL" then
+				section = "LEVEL"
+				level = { key = w[2] and (tonumber(w[2].s) or w[2].u) or "?", line = i, waiting = waiting,
+					title = w[3] and trim(code:sub(w[3].i)) or "",
+					scenes = {}, orphans = {}, settings = {}, last = i }
+				M.levels[#M.levels + 1] = level
+				scene, move, orphan = nil, nil, false
+			elseif section == "LEVEL" and level then
+				level.last = i
+				local m = (w[1] and w[1].s:match("^%d")) and moveParts(text) or nil
+				if u == "SCENE" then
+					local a, b = code:match("(%-?%d+)%s*%-%s*(%-?%d+)")
+					scene = { line = i, ra = tonumber(a), rb = tonumber(b), moves = {}, sub = {}, waiting = waiting, level = level }
+					level.scenes[#level.scenes + 1] = scene
+					move, orphan = nil, false
+				elseif m and (scene or orphan) then
+					m.line, m.waiting, m.sub, m.orphan, m.scene, m.level = i, waiting, {}, orphan, scene, level
+					if orphan then level.orphans[#level.orphans + 1] = m else scene.moves[#scene.moves + 1] = m end
+					move = m
+				elseif isDiff(u) and move == nil and scene then
+					scene.sub[#scene.sub + 1] = i
+				elseif scene == nil and not orphan then
+					-- the settings of the level, before its first scene
+					level.settings[#level.settings + 1] = i
+					local a, b = code:match("[Ii][Nn][Tt][Rr][Oo]%s+(%-?%d+)%s*%-%s*(%-?%d+)")
+					if a then level.ia, level.ib, level.introLine = tonumber(a), tonumber(b), i end
+				elseif move then
+					move.sub[#move.sub + 1] = i
+				end
+			elseif section == "GAME" and not waiting then
+				if u == "MOVIEFPS" and w[2] then M.fps = tonumber(w[2].s); M.fpsLine = i end
+				if u == "RELATIVEFRAMES" and w[2] then M.relative = (w[2].u == "YES" or w[2].u == "TRUE") end
+				if u == "INGAMEDIFFCHOICE" and w[2] then M.diffChoice = (w[2].u == "YES" or w[2].u == "TRUE") end
+			elseif section == "DEATHS" and not waiting then
+				local n, a, b = code:match("^%s*(%d+)%s+(%-?%d+)%s*%-%s*(%-?%d+)")
+				if n then M.deaths[#M.deaths + 1] = { n = tonumber(n), a = tonumber(a), b = tonumber(b), line = i,
+					placeholder = text:find("to mark", 1, true) ~= nil } end
+			elseif section == "CLIPS" and not waiting and w[1] then
+				local a, b = code:match("(%-?%d+)%s*%-%s*(%-?%d+)")
+				if not a then a = code:match("^%s*%S+%s+(%-?%d+)%s*$"); b = a end
+				if a then M.clips[w[1].s] = { a = tonumber(a), b = tonumber(b), line = i,
+					placeholder = text:find("to mark", 1, true) ~= nil } end
+			elseif section == "MENU FRAMES" and not waiting and w[1] then
+				local base, plus = code:match("^%s*%S+%s+([%a_][%w_]*)%s*%+%s*(%d+)")
+				local f
+				if base then f = (M.sym[base] or 0) + tonumber(plus)
+				else f = tonumber(code:match("^%s*%S+%s+(%-?%d+)")) end
+				if f then
+					M.sym[w[1].s] = f
+					M.menus[w[1].s] = { f = f, a = f, b = f, line = i, placeholder = text:find("to mark", 1, true) ~= nil }
+				end
+			end
+		end
+	end
+	if M.relative == nil then
+		M.relative = false
+		local seen, before = 0, 0
+		for _, lv in ipairs(M.levels) do
+			if lv.ia and #lv.scenes > 0 then
+				seen = seen + 1
+				for _, sc in ipairs(lv.scenes) do
+					if sc.ra and sc.ra < lv.ia then before = before + 1; break end
+				end
+			end
+		end
+		if before * 2 > seen then M.relative, M.relativeGuess = true, true end
+	end
+	-- in frames of the movie
+	for _, lv in ipairs(M.levels) do
+		local off = (M.relative and lv.ia) or 0
+		lv.off = off
+		local hi = lv.ib or 0
+		for _, sc in ipairs(lv.scenes) do
+			sc.a, sc.b = (sc.ra or 0) + off, (sc.rb or 0) + off
+			if sc.b > hi then hi = sc.b end
+			for _, m in ipairs(sc.moves) do m.a, m.b = m.ra + off, m.rb + off end
+		end
+		for _, m in ipairs(lv.orphans) do m.a, m.b = m.ra + off, m.rb + off; if m.b > hi then hi = m.b end end
+		lv.a = lv.ia or (lv.scenes[1] and lv.scenes[1].a) or 0
+		lv.b = hi
+	end
+	return M
+end
+
+-- ==========================================================================
+-- 3. Changing it
+-- ==========================================================================
+
+local function snapshot()
+	if S.noSnap then return end
+	local copy = {}
+	for i, l in ipairs(S.lines) do copy[i] = l end
+	S.undo[#S.undo + 1] = copy
+	if #S.undo > 200 then table.remove(S.undo, 1) end
+end
+
+local function insertLines(at, list)
+	for k = #list, 1, -1 do table.insert(S.lines, at, list[k]) end
+end
+
+-- a frame range rewritten where it is (after the word 'after' when given),
+-- the columns kept when possible
+local function setRange(l, a, b, after)
+	local waiting = isWaiting(l)
+	local text = waiting and unwait(l) or l
+	local from = 1
+	if after then
+		local _, e = text:find(after)
+		if e then from = e + 1 end
+	end
+	local s, e, x, sep, y = text:find("(%-?%d+)(%s*%-%s*)(%-?%d+)", from)
+	if not s then return l end
+	local na, nb = tostring(a), tostring(b)
+	local before, rest = text:sub(1, s - 1), text:sub(e + 1)
+	local ind = before:match("(%s*)$")
+	if #ind > 0 then
+		local n = #ind + #x - #na
+		if n < 1 then n = 1 end
+		before = before:sub(1, #before - #ind) .. string.rep(" ", n)
+	end
+	local sp = rest:match("^(%s*)")
+	if #sp > 0 and rest:find("%S") then
+		local n = #y + #sp - #nb
+		if n < 1 then n = 1 end
+		rest = string.rep(" ", n) .. rest:sub(#sp + 1)
+	end
+	local out = before .. na .. sep .. nb .. rest
+	return waiting and wait(out) or out
+end
+
+local function moveText(ra, rb, kind, death, name)
+	local d = (NO_DEATH[baseKind(kind)] or death == nil) and "" or deathWord(death)
+	local line
+	if #kind < 8 or (#kind == 8 and not kind:find(" ")) then line = string.format("      %6d - %-6d  %-8s %s", ra, rb, kind, d)
+	else line = string.format("      %6d - %-6d  %s   %s", ra, rb, kind, d) end
+	line = line:gsub("%s+$", "")
+	if name then line = line .. "   " .. name end
+	return line
+end
+
+-- v54: the choices of a PATH, a YESNO or a CHOOSE lead somewhere after a
+-- ">": a move by its name, next, death n, scene n, level n, next level.
+-- Create makes the names (answer1, path1, yes1, no1, join1), puts them on the
+-- moves chosen, and takes them away once nothing leads there.
+local CHOICE_KINDS = { PATH = true, YESNO = true, CHOOSE = true }
+local CONNECT_KINDS = { PATH = true, YESNO = true, CHOOSE = true, TIMED = true, WAY = true }
+local function isAutoName(n)
+	for _, x in ipairs({ "answer", "path", "yes", "no", "join", "timed", "way" }) do if n:match("^" .. x .. "%d+$") then return true end end
+	return false
+end
+local TARGET_WORDS = { death = true, next = true, scene = true, level = true, ["end"] = true, skip = true }
+
+-- the last ">" of a line (not in quotes): its place in the line, and what follows it
+local function arrow(l)
+	local code = splitComment(l)
+	local q, at = false, nil
+	for i = 1, #code do
+		local c = code:sub(i, i)
+		if c == '"' then q = not q elseif c == ">" and not q then at = i end
+	end
+	if not at then return nil end
+	return at, trim(code:sub(at + 1))
+end
+
+-- the name a line leads to, or nil (next, death 3, scene 2...)
+local function targetOf(l)
+	local _, t = arrow(isWaiting(l) and unwait(l) or l)
+	local w = t and t:match("^([%a_][%w_]*)")
+	if not w or TARGET_WORDS[w:lower()] then return nil end
+	return w:lower()
+end
+
+-- a move's line given a name, or none (nil)
+local function setLineName(i, name)
+	local l = S.lines[i]
+	local waiting = isWaiting(l)
+	local text = waiting and unwait(l) or l
+	local code, comment = splitComment(text)
+	local m = moveParts(text)
+	local body = code:gsub("%s+$", "")
+	if m and m.name then
+		local w = words(code)
+		body = code:sub(1, w[#w].i - 1):gsub("%s+$", "")
+	end
+	if name then body = body .. "   " .. name end
+	local out = body .. (comment ~= "" and ("   " .. comment) or "")
+	S.lines[i] = waiting and wait(out) or out
+end
+
+-- the lines of a scene: its line and its difficulty lines
+local function sceneLines(sc)
+	local lines = { S.lines[sc.line] }
+	for _, i in ipairs(sc.sub) do lines[#lines + 1] = S.lines[i] end
+	return lines
+end
+
+-- the body of a level written again: its settings, then each scene with the
+-- moves that start in it, in the order of the movie; moves outside every
+-- scene go to its end, waiting. 'scenes' = { {a, b, lines}... }, or nil to
+-- keep its scenes.
+local function rehome(lv, scenes)
+	local first = lv.scenes[1] and lv.scenes[1].line
+	if lv.orphans[1] and (not first or lv.orphans[1].line < first) then first = lv.orphans[1].line end
+	local stop = lv.last
+	local settings = {}
+	for i = lv.line + 1, (first or (stop + 1)) - 1 do settings[#settings + 1] = S.lines[i] end
+	while #settings > 0 and trim(settings[#settings]) == "" do table.remove(settings) end
+	local byLine = {}
+	for _, sc in ipairs(lv.scenes) do
+		byLine[sc.line] = { kind = "scene", obj = sc }
+		for _, m in ipairs(sc.moves) do byLine[m.line] = { kind = "move", obj = m } end
+	end
+	for _, m in ipairs(lv.orphans) do byLine[m.line] = { kind = "move", obj = m } end
+	local blocks, cur, notes = {}, nil, {}
+	if first then
+		for i = first, stop do
+			local l = S.lines[i]
+			local b = byLine[i]
+			if b then
+				b.lines = notes; notes = {}
+				b.lines[#b.lines + 1] = l
+				b.self = #b.lines
+				blocks[#blocks + 1] = b; cur = b
+			elseif trim(l) == "" then
+				-- one empty line is put back before each scene
+			elseif isComment(l) and l:find(ORPHANS, 1, true) then
+				-- Create's header, written again below
+			elseif isComment(l) then
+				notes[#notes + 1] = l
+			elseif cur then
+				cur.lines[#cur.lines + 1] = l
+			end
+		end
+	end
+	if cur then for _, l in ipairs(notes) do cur.lines[#cur.lines + 1] = l end end
+	if not scenes then
+		scenes = {}
+		for _, b in ipairs(blocks) do
+			if b.kind == "scene" then scenes[#scenes + 1] = { a = b.obj.a, b = b.obj.b, lines = b.lines } end
+		end
+	else
+		-- the comment lines above a scene stay with it
+		for _, b in ipairs(blocks) do
+			if b.kind == "scene" then
+				for _, sc in ipairs(scenes) do
+					if sc.from == b.obj.line and b.self > 1 then
+						for k = b.self - 1, 1, -1 do table.insert(sc.lines, 1, b.lines[k]) end
+					end
+				end
+			end
+		end
+	end
+	table.sort(scenes, function(x, y) return x.a < y.a end)
+	local moves = {}
+	for _, b in ipairs(blocks) do if b.kind == "move" then moves[#moves + 1] = b end end
+	table.sort(moves, function(x, y)
+		if x.obj.a ~= y.obj.a then return x.obj.a < y.obj.a end
+		return x.obj.line < y.obj.line
+	end)
+	for _, sc in ipairs(scenes) do sc.moves = {} end
+	local orphans = {}
+	for _, mb in ipairs(moves) do
+		local home = nil
+		for _, sc in ipairs(scenes) do if mb.obj.a >= sc.a and mb.obj.a <= sc.b then home = sc end end
+		local own = mb.lines[mb.self]
+		if home then
+			-- back in a scene: no longer waiting, unless it is still to finish
+			if mb.obj.orphan and not own:find("to finish", 1, true) and not connectNote(own) then mb.lines[mb.self] = unwait(own) end
+			home.moves[#home.moves + 1] = mb
+		else
+			mb.lines[mb.self] = wait(own)
+			orphans[#orphans + 1] = mb
+		end
+	end
+	local out = {}
+	for _, l in ipairs(settings) do out[#out + 1] = l end
+	for _, sc in ipairs(scenes) do
+		out[#out + 1] = ""
+		for _, l in ipairs(sc.lines) do out[#out + 1] = l end
+		for _, mb in ipairs(sc.moves) do for _, l in ipairs(mb.lines) do out[#out + 1] = l end end
+	end
+	if #orphans > 0 then
+		out[#out + 1] = ""
+		out[#out + 1] = "# moves of this level " .. ORPHANS .. " (Wizard puts them back when a scene covers them):"
+		for _, mb in ipairs(orphans) do for _, l in ipairs(mb.lines) do out[#out + 1] = l end end
+	end
+	for _ = lv.line + 1, stop do table.remove(S.lines, lv.line + 1) end
+	insertLines(lv.line + 1, out)
+end
+
+-- what cannot be played yet is "#~", what can is not; MovieEnd follows
+local function settle()
+	local M = parse(S.lines)
+	for _, lv in ipairs(M.levels) do
+		local live = false
+		for _, sc in ipairs(lv.scenes) do
+			sc.live = false
+			for _, m in ipairs(sc.moves) do if not m.waiting then sc.live = true end end
+			if sc.live then live = true end
+		end
+		local function set(i, on)
+			if on then S.lines[i] = isWaiting(S.lines[i]) and unwait(S.lines[i]) or S.lines[i]
+			else S.lines[i] = wait(S.lines[i]) end
+		end
+		set(lv.line, live)
+		for _, i in ipairs(lv.settings) do if trim(S.lines[i]) ~= "" and not isComment(S.lines[i]) then set(i, live) end end
+		for _, sc in ipairs(lv.scenes) do
+			set(sc.line, live and sc.live)
+			for _, i in ipairs(sc.sub) do set(i, live and sc.live) end
+		end
+	end
+	M = parse(S.lines)
+	local me = M.clips.MovieEnd
+	if me and S.lines[me.line]:find(AUTO_END, 1, true) then
+		local last = nil
+		for _, lv in ipairs(M.levels) do
+			for _, sc in ipairs(lv.scenes) do if not sc.waiting and (last == nil or sc.b > last) then last = sc.b end end
+		end
+		if last then S.lines[me.line] = string.format("  %-18s %d   # %s, for the Movie mode", "MovieEnd", last, AUTO_END) end
+	end
+end
+
+-- the sheet as KimmyScript reads it: S.error is nil, or what stops it
+local function check()
+	S.error = nil
+	S.warning = nil
+	local M0 = S.model
+	if M0 then
+		local live = {}
+		for _, lv in ipairs(M0.levels) do if type(lv.key) == "number" and not lv.waiting then live[lv.key] = true end end
+		local n = 0
+		while live[n + 1] do n = n + 1 end
+		for k in pairs(live) do
+			if k > n + 1 then
+				S.warning = "LEVEL " .. (n + 1) .. " has no move yet: the game stops before LEVEL " .. k
+				break
+			end
+		end
+	end
+	if M0 and not S.warning then
+		for _, lv in ipairs(M0.levels) do
+			for _, sc in ipairs(lv.scenes) do
+				for _, m in ipairs(sc.moves) do
+					local l = S.lines[m.line]
+					if not S.warning and connectNote(l) then
+						S.warning = m.kind .. " " .. m.a .. "-" .. m.b .. " waits: connect " .. l:match("# to connect in EDIT: (.*)$") .. " in its EDIT"
+					end
+				end
+			end
+		end
+		for _, lv in ipairs(M0.levels) do
+			for _, sc in ipairs(lv.scenes) do
+				for _, m in ipairs(sc.moves) do
+					if not S.warning and m.kind == "CHOOSE" then
+						local all = { S.lines[m.line] }
+						for _, i in ipairs(m.sub) do all[#all + 1] = S.lines[i] end
+						local t = table.concat(all, "\n")
+						if t:find("INSERT QUESTION HERE", 1, true) or t:find('"ANSWER %d+"') then
+							S.warning = "CHOOSE " .. m.a .. "-" .. m.b .. ": write its question and answers in the sheet (INSERT QUESTION HERE, ANSWER n)"
+						end
+					end
+				end
+			end
+		end
+	end
+	local M = S.model
+	if Sheet == nil or not M or not M.sheetLine or not M.endLine then return end
+	local parts = {}
+	for i = 1, M.sheetLine - 1 do parts[i] = "" end
+	for i = M.sheetLine, M.endLine do parts[#parts + 1] = S.lines[i] end
+	local name = (S.path or "sheet"):match("([^/\\]+)$")
+	local f, e = load_(table.concat(parts, "\n"), "@" .. name)
+	if not f then S.error = tostring(e); return end
+	local keep = { MovieFPS, RelativeFrames }
+	FreezeDeath = true
+	local ok, err = pcall(f)
+	MovieFPS, RelativeFrames = keep[1], keep[2]
+	if not ok then S.error = tostring(err) end
+end
+
+local function write()
+	if not S.path then return end
+	local h = io.open(S.path, "wb")
+	if h then
+		h:write(table.concat(S.lines, S.eol))
+		if S.lastEol then h:write(S.eol) end
+		h:close()
+	end
+end
+
+-- v54: a PATH, YESNO or CHOOSE waits ("#~", with what is still to connect)
+-- while one of its choices leads to a name that no move of its scene has;
+-- it plays once they are all there. The names Create made that nothing
+-- leads to any more are taken away.
+local connect
+do
+local function connectPass()
+	local M = parse(S.lines)
+	local again = false
+	for _, lv in ipairs(M.levels) do
+		for _, sc in ipairs(lv.scenes) do
+			local names, used = {}, {}
+			for _, m in ipairs(sc.moves) do
+				if m.name and not m.waiting then names[m.name:lower()] = true end
+				local t = targetOf(S.lines[m.line])
+				if t then used[t] = true end
+				for _, i in ipairs(m.sub) do
+					t = targetOf(S.lines[i])
+					if t then used[t] = true end
+				end
+			end
+			for _, m in ipairs(sc.moves) do
+				local l = S.lines[m.line]
+				if CONNECT_KINDS[m.kind] and (not m.waiting or connectNote(l)) then
+					local missing, seen = {}, {}
+					local all = { m.line }
+					for _, i in ipairs(m.sub) do all[#all + 1] = i end
+					for _, i in ipairs(all) do
+						local n = targetOf(S.lines[i])
+						if n == "skip" then n = nil end
+						if n and not names[n] and not seen[n] then seen[n] = true; missing[#missing + 1] = n end
+					end
+					local base = unwait(l):gsub("%s*# to connect.*$", "")
+					local new
+					if #missing == 0 then
+						if connectNote(l) then
+							new = base
+							for _, i in ipairs(m.sub) do S.lines[i] = unwait(S.lines[i]) end
+						end
+					else
+						new = WAITING .. base .. "   " .. CONNECT .. table.concat(missing, ", ")
+						for _, i in ipairs(m.sub) do S.lines[i] = wait(S.lines[i]) end
+					end
+					if new and new ~= l then S.lines[m.line] = new; again = true end
+				end
+			end
+			for _, m in ipairs(sc.moves) do
+				if m.name and isAutoName(m.name:lower()) and not used[m.name:lower()] then setLineName(m.line, nil); again = true end
+			end
+		end
+	end
+	return again
+end
+function connect()
+	-- a move that plays again can be what another one waits for
+	for _ = 1, 6 do if not connectPass() then return end end
+end
+end
+
+local function changed()
+	connect()
+	settle()
+	S.model = parse(S.lines)
+	check()
+	write()
+end
+
+local function undo()
+	if #S.undo == 0 then return false end
+	S.lines = table.remove(S.undo)
+	S.model = parse(S.lines)
+	check()
+	write()
+	return true
+end
+
+-- --------------------------------------------------------------------------
+-- the changes; each one can be undone
+
+local function levelAt(f)
+	local found
+	for _, lv in ipairs(S.model.levels) do if f >= lv.a and f <= lv.b then found = lv end end
+	return found
+end
+
+local function sceneAt(lv, f)
+	for _, sc in ipairs(lv.scenes) do if f >= sc.a and f <= sc.b then return sc end end
+end
+
+-- what would not play as marked (v36): a move must start in a scene, end in
+-- it, and leave the other moves alone (only one move is active at a time)
+local function moveProblem(a, b, except)
+	local lv = levelAt(a)
+	if not lv then return "no LEVEL at " .. a .. ": mark the level first" end
+	local sc = sceneAt(lv, a)
+	if not sc then return "no SCENE at " .. a .. " in LEVEL " .. tostring(lv.key) end
+	if b > sc.b then return "it would end after its scene (" .. sc.a .. "-" .. sc.b .. ")" end
+	-- not on what is something else in the movie (v39)
+	if lv.ia and a <= lv.ib and b >= lv.ia then
+		return "it would be on the intro of " .. "LEVEL " .. tostring(lv.key) .. " (" .. lv.ia .. "-" .. lv.ib .. ")"
+	end
+	for _, x in ipairs(lv.scenes) do
+		for _, m in ipairs(x.moves) do
+			if m ~= except and m.line ~= (except and except.line) and a <= m.b and b >= m.a then
+				return "it would overlap the move " .. m.a .. "-" .. m.b .. " " .. m.kind
+			end
+		end
+	end
+	return nil, lv, sc
+end
+
+-- 'kind': the move as written, or what a list built (v54): { text, subs =
+-- the lines under it, names = { {line, name}... } put on the moves chosen }
+local function specText(kind) return type(kind) == "table" and kind.text or kind end
+local function addMove(a, b, kind, death)
+	local spec = type(kind) == "table" and kind or nil
+	kind = specText(kind)
+	if death == nil and spec then death = spec.death end
+	local err, lv, sc = moveProblem(a, b)
+	if err then return err end
+	snapshot()
+	-- the names first: the lines do not move yet
+	if spec then for _, n in ipairs(spec.names or {}) do setLineName(n.line, n.name) end end
+	local line = moveText(a - lv.off, b - lv.off, kind, death)
+	-- (a PATH, YESNO or CHOOSE given without its choices waits for them)
+	if (TO_FINISH[kind] or CHOICE_KINDS[baseKind(kind)]) and not spec then line = WAITING .. line .. finishNote(kind) end
+	local at = sc.sub[#sc.sub] or sc.line
+	for _, m in ipairs(sc.moves) do if m.a <= a then at = m.sub[#m.sub] or m.line end end
+	local lines = { line }
+	if spec then for _, x in ipairs(spec.subs or {}) do lines[#lines + 1] = x end end
+	insertLines(at + 1, lines)
+	changed()
+end
+
+local function addLevel(a, b)
+	local M = S.model
+	for _, lv in ipairs(M.levels) do
+		if a <= lv.b and b >= lv.a then return "LEVEL " .. tostring(lv.key) .. " is already there (" .. lv.a .. "-" .. lv.b .. ")" end
+	end
+	if b < a + 2 then return "a level needs at least 3 frames" end
+	snapshot()
+	local key = 0
+	for _, lv in ipairs(M.levels) do if type(lv.key) == "number" and lv.key > key then key = lv.key end end
+	key = key + 1
+	local off = M.relative and a or 0
+	local new = { "LEVEL " .. key .. "   Level " .. key, string.format("  intro %d - %d", a, a + 1), "",
+		string.format("  SCENE %d - %d", a + 2 - off, b - off) }
+	-- at the end, after the last level (or the last section)
+	local at = M.endLine
+	while at > 1 and trim(S.lines[at - 1]) == "" do at = at - 1 end
+	table.insert(new, 1, "")
+	insertLines(at, new)
+	changed()
+	return nil, key
+end
+
+-- the scenes of a level once [a, b] is a scene: the scenes it overlaps give
+-- way (cut, or gone when covered); 'edited' is the scene that becomes [a, b]
+local function placeScene(lv, a, b, edited)
+	local scenes = {}
+	for _, sc in ipairs(lv.scenes) do
+		if sc ~= edited then
+			local lines = sceneLines(sc)
+			if sc.b < a or sc.a > b then
+				scenes[#scenes + 1] = { a = sc.a, b = sc.b, lines = lines, from = sc.line }
+			elseif sc.a < a and sc.b > b then
+				local head = { a = sc.a, b = a - 1, lines = lines, from = sc.line, cut = true }
+				head.lines[1] = setRange(lines[1], head.a - lv.off, head.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+				local tail = { a = b + 1, b = sc.b, lines = { (setRange(S.lines[sc.line], b + 1 - lv.off, sc.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")) }, cut = true }
+				scenes[#scenes + 1] = head; scenes[#scenes + 1] = tail
+			elseif sc.a < a then
+				lines[1] = setRange(lines[1], sc.a - lv.off, a - 1 - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+				scenes[#scenes + 1] = { a = sc.a, b = a - 1, lines = lines, from = sc.line, cut = true }
+			elseif sc.b > b then
+				lines[1] = setRange(lines[1], b + 1 - lv.off, sc.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+				scenes[#scenes + 1] = { a = b + 1, b = sc.b, lines = lines, from = sc.line, cut = true }
+			end
+		end
+	end
+	local mine
+	if edited then
+		mine = { a = a, b = b, lines = sceneLines(edited), mine = true, from = edited.line }
+		mine.lines[1] = setRange(mine.lines[1], a - lv.off, b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+	else
+		mine = { a = a, b = b, lines = { string.format("  SCENE %d - %d", a - lv.off, b - lv.off) }, mine = true }
+	end
+	scenes[#scenes + 1] = mine
+	table.sort(scenes, function(x, y) return x.a < y.a end)
+	-- an empty first scene cut by the new one, that only fills the start of
+	-- the level: the intro grows over it; a scene marked in the intro: the
+	-- intro stops before it (not when the frames count from the intro)
+	local function hasMoves(x)
+		for _, sc in ipairs(lv.scenes) do
+			for _, m in ipairs(sc.moves) do if m.a >= x.a and m.a <= x.b then return true end end
+		end
+		for _, m in ipairs(lv.orphans) do if m.a >= x.a and m.a <= x.b then return true end end
+		return false
+	end
+	local x = scenes[1]
+	if lv.introLine and not S.model.relative then
+		if #scenes > 1 and x.cut and not hasMoves(x) and x.a <= (lv.ib or lv.a) + 1 then
+			S.lines[lv.introLine] = setRange(S.lines[lv.introLine], lv.ia, x.b, "[Ii][Nn][Tt][Rr][Oo]")
+			table.remove(scenes, 1)
+		elseif lv.ib and a <= lv.ib and a - 1 > lv.ia then
+			S.lines[lv.introLine] = setRange(S.lines[lv.introLine], lv.ia, a - 1, "[Ii][Nn][Tt][Rr][Oo]")
+		end
+	end
+	return scenes
+end
+
+local function addScene(a, b)
+	local lv = levelAt(a)
+	if not lv then return "no LEVEL at " .. a .. ": mark the whole level first" end
+	snapshot()
+	rehome(lv, placeScene(lv, a, b))
+	changed()
+end
+
+local function addDeath(a, b)
+	local M = S.model
+	if not M.sections.DEATHS then return nil, "no DEATHS section in the sheet" end
+	snapshot()
+	local d1 = M.deaths[1]
+	if #M.deaths == 1 and d1.placeholder then
+		S.lines[d1.line] = string.format("  %4d    %d - %d", 1, a, b)
+		changed()
+		return 1
+	end
+	local n = #M.deaths + 1
+	local at = M.deaths[#M.deaths] and M.deaths[#M.deaths].line or M.sections.DEATHS
+	insertLines(at + 1, { string.format("  %4d    %d - %d", n, a, b) })
+	changed()
+	return n
+end
+
+local function setNamed(section, name, value)
+	local M = S.model
+	if not M.sections[section] then return "no " .. section .. " section in the sheet" end
+	snapshot()
+	local items = section == "CLIPS" and M.clips or M.menus
+	local item = items[name]
+	if item then
+		local l = S.lines[item.line]
+		local _, comment = splitComment(l)
+		if comment:find("to mark", 1, true) or comment:find(AUTO_END, 1, true) then comment = "" end
+		local new = string.format("%s%-18s %s", l:match("^%s*"), l:match("^%s*(%S+)"), value)
+		if comment ~= "" then new = new .. "   " .. comment end
+		S.lines[item.line] = new
+	else
+		local at = M.sections[section]
+		for _, it in pairs(items) do if it.line > at then at = it.line end end
+		insertLines(at + 1, { string.format("  %-18s %s", name, value) })
+	end
+	changed()
+end
+
+local function setClip(name, a, b)
+	if ONE_FRAME_CLIPS[name] or b == nil then return setNamed("CLIPS", name, tostring(a)) end
+	return setNamed("CLIPS", name, a .. " - " .. b)
+end
+
+local function setMenu(name, f) return setNamed("MENU FRAMES", name, tostring(f)) end
+
+local function dropNamed(section, name)
+	local M = S.model
+	local items = section == "CLIPS" and M.clips or M.menus
+	local item = items[name]
+	if not item then return name .. " is not in the sheet" end
+	if section == "MENU FRAMES" then
+		for other, x in pairs(M.menus) do
+			if other ~= name and not x.placeholder and splitComment(S.lines[x.line]):find("^%s*%S+%s+" .. name .. "%s*%+") then
+				return "menu frame " .. other .. " is written " .. name .. " + ...: " .. name .. " stays"
+			end
+		end
+	end
+	local needed = false
+	for _, n in ipairs(section == "CLIPS" and NEEDED_CLIPS or NEEDED_MENUS) do if n == name then needed = true end end
+	snapshot()
+	local pad = S.lines[item.line]:match("^%s*")
+	local note
+	if name == "MovieEnd" and section == "CLIPS" then
+		S.lines[item.line] = string.format("%s%-18s 0   # %s, for the Movie mode", pad, name, AUTO_END)
+		note = "back to the end of the last scene"
+	elseif needed then
+		local value = section == "CLIPS" and "0 - 1" or (name == "Menus" and "0" or "Menus + 0")
+		S.lines[item.line] = string.format("%s%-18s %s   # to mark", pad, name, value)
+		note = "to mark again"
+	else
+		table.remove(S.lines, item.line)
+	end
+	changed()
+	return nil, note
+end
+
+local function findLevel(line)
+	for _, lv in ipairs(S.model.levels) do if lv.line == line then return lv end end
+end
+
+local TM = nil
+local function editMove(m, what, v1, v2)
+	if what == "frames" then
+		local err = moveProblem(v1, v2, m)
+		if err then return err end
+		if m.kind == "TIMED" and TM then
+			for _, w in ipairs(TM.windowsOf(m)) do
+				if w.a < v1 or w.b > v2 then return "its window " .. w.a .. "-" .. w.b .. " would be outside: change the windows first" end
+			end
+		end
+	end
+	snapshot()
+	local lv = m.level
+	local l = S.lines[m.line]
+	local text = isWaiting(l) and unwait(l) or l
+	if what == "frames" then
+		S.lines[m.line] = setRange(l, v1 - lv.off, v2 - lv.off)
+		S.model = parse(S.lines)
+		-- its place may change: the level is put back in order
+		rehome(findLevel(lv.line))
+	elseif what == "death" then
+		local p = moveParts(text)
+		local dw = p and p.dw and p.words[p.dw]
+		if not dw and v1 == -4 then S.undo[#S.undo] = nil; return "death: freeze, unchanged" end
+		if not dw and not (TM and TM.freeze() and p and p.words[1]) then S.undo[#S.undo] = nil; return "this move has no death to change" end
+		if not dw then
+			local last = p.words[p.name and (#p.words - 1) or #p.words]
+			text = text:sub(1, last.j) .. "   " .. deathWord(v1) .. text:sub(last.j + 1)
+		elseif v1 == -4 then
+			text = text:sub(1, p.words[p.dw - 1].j) .. text:sub(dw.j + 1)
+		else
+			text = text:sub(1, dw.i - 1) .. deathWord(v1) .. text:sub(dw.j + 1)
+		end
+		S.lines[m.line] = isWaiting(l) and wait(text) or text
+	elseif what == "kind" then
+		local spec = type(v1) == "table" and v1 or nil
+		v1 = specText(v1)
+		if spec then for _, n in ipairs(spec.names or {}) do setLineName(n.line, n.name) end end
+		local _, comment = splitComment(text)
+		comment = comment:gsub("^#%s*to finish.*$", ""):gsub("^#%s*to connect.*$", "")
+		local death = spec and spec.death or m.death
+		if death == nil and not NO_DEATH[baseKind(v1)] and not (TM and TM.freeze()) then death = v2 or 1 end
+		local new = moveText(m.ra, m.rb, v1, death, m.name)
+		if comment ~= "" then new = new .. "   " .. comment end
+		local toFinish = (TO_FINISH[v1] or CHOICE_KINDS[baseKind(v1)]) and not spec
+		if toFinish then new = new .. finishNote(v1) end
+		S.lines[m.line] = (toFinish or m.orphan) and wait(new) or new
+		-- what was written under a PATH... does not fit another move
+		if spec or not TO_FINISH[v1] then for k = #m.sub, 1, -1 do table.remove(S.lines, m.sub[k]) end end
+		if spec then insertLines(m.line + 1, spec.subs or {}) end
+	elseif what == "delete" then
+		for k = #m.sub, 1, -1 do table.remove(S.lines, m.sub[k]) end
+		table.remove(S.lines, m.line)
+	end
+	changed()
+end
+
+local function editScene(sc, what, a, b)
+	local lv = sc.level
+	if what == "delete" then
+		-- the scene and its moves (v38: after a confirmation on the screen)
+		if #lv.scenes == 1 then return "the only scene of its level: delete the level, or its moves" end
+		snapshot()
+		local gone = { sc.line }
+		local k = sc.line - 1
+		while k > lv.line and trim(S.lines[k]) == "" do gone[#gone + 1] = k; k = k - 1 end
+		for _, i in ipairs(sc.sub) do gone[#gone + 1] = i end
+		for _, m in ipairs(sc.moves) do
+			gone[#gone + 1] = m.line
+			for _, i in ipairs(m.sub) do gone[#gone + 1] = i end
+		end
+		table.sort(gone, function(x, y) return x > y end)
+		for _, i in ipairs(gone) do table.remove(S.lines, i) end
+		S.model = parse(S.lines)
+		rehome(findLevel(lv.line))
+	else
+		local err = TM.levelClash(lv, a, b)
+		if err then return err end
+		if lv.ia and a <= lv.ia then return "it would start before the intro (" .. lv.ia .. "-" .. lv.ib .. ")" end
+		err = TM.sceneInLevel(lv, sc, a, b)
+		if err then return err end
+		snapshot()
+		rehome(lv, placeScene(lv, a, b, sc))
+	end
+	changed()
+end
+
+-- SPLIT SCENE (v49): f becomes the first frame of a second scene. The first
+-- one keeps its lines (difficulty lines, comments); each move stays in the
+-- scene where it starts, and none can be cut (f is not on a move)
+local function splitScene(f)
+	local lv = levelAt(f)
+	if not lv then return "no LEVEL here" end
+	local sc = sceneAt(lv, f)
+	if not sc then return "no scene here" end
+	if f <= sc.a then return "this is the first frame of the scene: nothing before it to split" end
+	for _, m in ipairs(sc.moves) do
+		if m.a < f and m.b >= f then return "it would cut the move " .. m.a .. "-" .. m.b .. " " .. m.kind end
+	end
+	snapshot()
+	local scenes = {}
+	for _, x in ipairs(lv.scenes) do
+		local lines = sceneLines(x)
+		if x == sc then
+			lines[1] = setRange(lines[1], x.a - lv.off, f - 1 - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+			scenes[#scenes + 1] = { a = x.a, b = f - 1, lines = lines, from = x.line }
+			scenes[#scenes + 1] = { a = f, b = x.b, lines = { string.format("  SCENE %d - %d", f - lv.off, x.b - lv.off) } }
+		else
+			scenes[#scenes + 1] = { a = x.a, b = x.b, lines = lines, from = x.line }
+		end
+	end
+	rehome(lv, scenes)
+	changed()
+end
+
+-- JOIN NEXT SCENE (v49): the scene runs on to the end of the next one, which
+-- goes; its moves stay, now in this scene (the next one's difficulty lines
+-- go with it: START gives them back)
+local function joinScene(sc)
+	local lv = sc.level
+	local nxt
+	for n, x in ipairs(lv.scenes) do if x == sc then nxt = lv.scenes[n + 1] end end
+	if not nxt then return "the last scene of its level: nothing after it to join" end
+	snapshot()
+	local scenes = {}
+	for _, x in ipairs(lv.scenes) do
+		if x == sc then
+			local lines = sceneLines(x)
+			lines[1] = setRange(lines[1], x.a - lv.off, nxt.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+			scenes[#scenes + 1] = { a = x.a, b = nxt.b, lines = lines, from = x.line }
+		elseif x ~= nxt then
+			scenes[#scenes + 1] = { a = x.a, b = x.b, lines = sceneLines(x), from = x.line }
+		end
+	end
+	rehome(lv, scenes)
+	changed()
+end
+
+-- INTRO ENDS HERE (v49): the intro runs to the frame before f, the first
+-- scene starts at f; from the intro (it gets shorter) or from the first
+-- scene before its first move (it gets longer)
+local function introEndsProblem(f)
+	local lv = levelAt(f)
+	if not lv or not lv.introLine or not lv.ia then return "no level with an intro here" end
+	local sc = lv.scenes[1]
+	if not sc then return "no scene in the level" end
+	if f <= lv.ia then return "the intro needs at least one frame" end
+	if f > sc.b then return "only in the intro or the first scene" end
+	if f > sc.a then
+		for _, m in ipairs(sc.moves) do if m.a < f then return "the move " .. m.a .. "-" .. m.b .. " would be in the intro" end end
+	end
+	if f == sc.a then return "the first scene already starts here" end
+	return nil, lv, sc
+end
+local function introEndsHere(f)
+	local err, lv, sc = introEndsProblem(f)
+	if err then return err end
+	snapshot()
+	S.lines[lv.introLine] = setRange(S.lines[lv.introLine], lv.ia, f - 1, "[Ii][Nn][Tt][Rr][Oo]")
+	S.lines[sc.line] = setRange(S.lines[sc.line], f - lv.off, sc.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+	changed()
+end
+
+-- a level can only go when it is the last one: the levels after it would
+-- change number, and a missing number stops the game there
+local function lastLevel(lv)
+	if lv.key == "SECRET" then return true end
+	for _, x in ipairs(S.model.levels) do
+		if type(x.key) == "number" and type(lv.key) == "number" and x.key > lv.key then return false end
+	end
+	return true
+end
+
+local function deleteLevel(lv)
+	if not lastLevel(lv) then
+		return "only the last level can be deleted: the next ones would change number (delete its moves instead)"
+	end
+	snapshot()
+	local first = lv.line
+	while first > 1 and trim(S.lines[first - 1]) == "" do first = first - 1 end
+	for _ = first, lv.last do table.remove(S.lines, first) end
+	-- no two empty lines left where it was
+	while first > 1 and S.lines[first] and trim(S.lines[first]) == "" and trim(S.lines[first - 1]) == "" do
+		table.remove(S.lines, first)
+	end
+	changed()
+end
+
+local function editIntro(lv, a, b)
+	if S.model.relative and a ~= lv.ia then
+		return "here frames count from each intro: moving its start would move the whole level"
+	end
+	local err = TM.levelClash(lv, a, b)
+	if err then return err end
+	local sc = lv.scenes[1]
+	local join = sc and (b >= sc.a or (lv.ib and lv.ib + 1 == sc.a))
+	if join then
+		if b >= sc.b then return "the intro would cover the scene " .. sc.a .. "-" .. sc.b end
+		for _, m in ipairs(sc.moves) do if m.a <= b then return "the move " .. m.a .. "-" .. m.b .. " would be in the intro" end end
+	end
+	snapshot()
+	S.lines[lv.introLine] = setRange(S.lines[lv.introLine], a, b, "[Ii][Nn][Tt][Rr][Oo]")
+	if join then S.lines[sc.line] = setRange(S.lines[sc.line], b + 1 - lv.off, sc.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]") end
+	changed()
+end
+
+local function editDeath(d, what, a, b)
+	snapshot()
+	if what == "delete" then table.remove(S.lines, d.line)
+	else S.lines[d.line] = setRange(S.lines[d.line], a, b, "^%s*%d+") end
+	changed()
+end
+
+-- ==========================================================================
+-- 4. Opening
+-- ==========================================================================
+
+local function readLines(path)
+	local h = io.open(path, "rb")
+	if not h then return nil end
+	local s = h:read("*a")
+	h:close()
+	local eol = s:find("\r\n", 1, true) and "\r\n" or "\n"
+	local lastEol = s:sub(-1) == "\n"
+	local lines = {}
+	for l in (lastEol and s or (s .. "\n")):gmatch("(.-)\r?\n") do lines[#lines + 1] = l end
+	return lines, eol, lastEol
+end
+
+local function exists(p)
+	local h = io.open(p, "rb")
+	if h then h:close(); return true end
+	return false
+end
+
+local function skeleton()
+	local L = {}
+	local function add(s) L[#L + 1] = s end
+	add(MARK_LINE)
+	add("")
+	add("Sheet [[")
+	add("")
+	add("GAME")
+	add(string.format("  MovieFPS           %s", fps and (string.format("%.3f", fps):gsub("0+$", ""):gsub("%.$", "")) or "23.976   # to check"))
+	add("")
+	add("CLIPS")
+	for _, n in ipairs(NEEDED_CLIPS) do add(string.format("  %-18s 0 - 1   # to mark", n)) end
+	add(string.format("  %-18s 0   # %s, for the Movie mode", "MovieEnd", AUTO_END))
+	add("")
+	add("MENU FRAMES")
+	for _, n in ipairs(NEEDED_MENUS) do
+		add(string.format("  %-18s %s", n, n == "Menus" and "0   # to mark" or "Menus + 0   # to mark"))
+	end
+	add("")
+	add("DEATHS")
+	add("     1    0 - 1   # to mark: no death marked yet")
+	add("")
+	add("]]")
+	return L
+end
+
+-- a sheet of the first create mode (v30, v31): its two first lines, and its
+-- PATH... to finish, then plain comments, become waiting lines
+local function fromFirstVersion()
+	if S.lines[2] and S.lines[2]:find("^%-%- To edit it by hand") then
+		S.lines[1] = MARK_LINE
+		table.remove(S.lines, 2)
+		for i, l in ipairs(S.lines) do
+			if l:match("^#%s+%d+%s*%-%s*%d+") and l:find("# to finish", 1, true) then
+				local kind = (moveParts(l:sub(2)) or {}).kind
+				S.lines[i] = WAITING .. l:sub(2):gsub("#%s*to finish.*$", (finishNote(kind):gsub("^%s+", "")))
+			end
+		end
+		return true
+	end
+end
+
+local openMessage = nil
+
+local function open()
+	local lfsOk, lfs = pcall(require, "lfs")
+	local sheets, copies, singes = {}, {}, {}
+	if lfsOk and lfs then
+		local ok, iter, st = pcall(lfs.dir, DIR)
+		if ok then
+			for f in iter, st do
+				local low = f:lower()
+				if low:match("%.dirk$") and low ~= "create.dirk" and low ~= "wizard.dirk" and low ~= TM.self then
+					if low:match("%-wizard%.dirk$") or low:match("%-create%.dirk$") then copies[#copies + 1] = f else sheets[#sheets + 1] = f end
+				elseif low:match("%.singe$") then
+					singes[#singes + 1] = f
+				end
+			end
+		end
+	end
+	table.sort(sheets); table.sort(copies); table.sort(singes)
+	TM.sheets = sheets
+	local name = WizardSheet or CreateSheet
+	if not name then
+		for _, c in ipairs(sheets) do if c:lower() == (NAME .. ".dirk"):lower() then name = c end end
+		name = name or sheets[1]
+		if #sheets > 1 then openMessage = "several sheets here, " .. name .. " is open (B1: OPEN ANOTHER SHEET)" end
+	end
+	if not name and copies[1] then
+		S.path = DIR .. copies[1]
+		S.lines, S.eol, S.lastEol = readLines(S.path)
+		openMessage = "working in " .. copies[1]
+	elseif not name and singes[1] then
+		local sg = singes[1]
+		for _, c in ipairs(singes) do if c:lower() == (NAME .. ".singe"):lower() then sg = c end end
+		local conv, said, why = TM.convert(DIR .. sg)
+		if not conv then
+			openMessage = sg .. ": " .. said
+			S.path = nil
+			return
+		end
+		local base = sg:gsub("%.[Ss][Ii][Nn][Gg][Ee]$", "")
+		table.insert(conv, 1, MARK_LINE)
+		table.insert(conv, 2, "")
+		S.path = DIR .. base .. ".dirk"
+		S.lines, S.eol, S.lastEol = conv, (package.config:sub(1, 1) == "\\") and "\r\n" or "\n", true
+		write()
+		TM.sheets = { base .. ".dirk" }
+		openMessage = said .. ": " .. base .. ".dirk (" .. sg .. " is not touched)" .. why
+	elseif not name then
+		-- a new game
+		S.path = DIR .. NAME .. ".dirk"
+		S.lines, S.eol, S.lastEol = skeleton(), (package.config:sub(1, 1) == "\\") and "\r\n" or "\n", true
+		write()
+		openMessage = "new sheet " .. NAME .. ".dirk: B1 for the menu"
+	else
+		local base = name:gsub("%.[Dd][Ii][Rr][Kk]$", "")
+		local lines, eol, lastEol = readLines(DIR .. name)
+		if not lines then
+			openMessage = name .. " cannot be read"
+			return
+		end
+		if lines[1] and (lines[1]:find(MARK, 1, true) or lines[1]:find("-- Made with Wizard", 1, true)) then
+			S.path, S.lines, S.eol, S.lastEol = DIR .. name, lines, eol, lastEol
+			openMessage = openMessage or ("working in " .. name)
+			if fromFirstVersion() then write() end
+		else
+			local copy = DIR .. base .. "-wizard.dirk"
+			if not exists(copy) and exists(DIR .. base .. "-create.dirk") then os.rename(DIR .. base .. "-create.dirk", copy) end
+			if exists(copy) then
+				S.lines, S.eol, S.lastEol = readLines(copy)
+				openMessage = openMessage or ("working in " .. base .. "-wizard.dirk (" .. name .. " is not touched)")
+			else
+				S.lines, S.eol, S.lastEol = lines, eol, lastEol
+				openMessage = openMessage or ("working in a copy, " .. base .. "-wizard.dirk (" .. name .. " is not touched)")
+				local m = parse(lines)
+				if not m.sheetLine or not m.endLine then
+					local conv, said, why = TM.convert(DIR .. name)
+					if conv then
+						S.lines, S.lastEol = conv, true
+						openMessage = said .. " (" .. name .. " is not touched): working in " .. base .. "-wizard.dirk" .. why
+					else
+						openMessage = name .. ": " .. said
+						S.path = nil
+						return
+					end
+				end
+			end
+			S.path, S.from = copy, name
+		end
+	end
+	S.model = parse(S.lines)
+	if not S.model.sheetLine or not S.model.endLine then
+		openMessage = (name or "this .dirk") .. " is not a sheet (no Sheet [[ ]]): convert it first"
+		S.path = nil
+		return
+	end
+	check()
+	if S.model.relativeGuess then TM.addRelative() end
+	local M = S.model
+	if fps and M.fpsLine and M.fps and math.abs(M.fps - fps) > 0.01 then
+		local old = M.fps
+		local word = (string.format("%.3f", fps):gsub("0+$", ""):gsub("%.$", ""))
+		S.lines[M.fpsLine] = string.format("  %-18s %s", "MovieFPS", word)
+		S.model = parse(S.lines)
+		check()
+		write()
+		openMessage = "MovieFPS " .. old .. " corrected: the movie is " .. word .. " (" .. tostring(openMessage) .. ")"
+	end
+	if S.from and not exists(S.path) then write() end
+end
+
+-- ==========================================================================
+-- 5. On the screen
+-- ==========================================================================
+
+local function le(s, i, n)
+	local v = 0
+	for k = n - 1, 0, -1 do v = v * 256 + s:byte(i + k) end
+	return v
+end
+
+local function readIndex()
+	local okLfs, lfs = pcall(require, "lfs")
+	if not okLfs or lfs == nil then return end
+	local folder = DIR .. "Movie"
+	local okDir, iter, state = pcall(lfs.dir, folder)
+	if not okDir then return end
+	for f in iter, state do
+		if f:match("%.dirkindex$") then
+			local h = io.open(folder .. "/" .. f, "rb")
+			if h then
+				local s = h:read(48)
+				h:close()
+				if s and #s >= 48 and s:sub(1, 7) == "DIRKIDX" then
+					length = le(s, 25, 8)
+					local fn, fd = le(s, 41, 4), le(s, 45, 4)
+					if fd > 0 then fps = fn / fd end
+					return
+				end
+			end
+		end
+	end
+end
+
+local function lvName(lv) return "LEVEL " .. tostring(lv.key) end
+local function moveName(m)
+	return "move " .. m.a .. "-" .. m.b .. " " .. (m.text or m.kind) .. (m.death and (" " .. deathWord(m.death)) or "")
+		.. (m.name and (" " .. m.name) or "") .. (m.waiting and " (waiting)" or "")
+end
+
+-- everything at a frame, for the screen and for EDIT
+local function itemsAt(f)
+	local M, out = S.model, {}
+	if not M then return out end
+	for _, lv in ipairs(M.levels) do
+		if f >= lv.a and f <= lv.b then
+			out[#out + 1] = { kind = "level", obj = lv, a = lv.a, b = lv.b, text = lvName(lv) .. "  " .. lv.a .. "-" .. lv.b }
+			if lv.ia and f >= lv.ia and f <= lv.ib then
+				out[#out + 1] = { kind = "intro", obj = lv, a = lv.ia, b = lv.ib, text = lvName(lv) .. " intro " .. lv.ia .. "-" .. lv.ib }
+			end
+			for n, sc in ipairs(lv.scenes) do
+				if f >= sc.a and f <= sc.b then
+					-- numbered as in the level, like GO TO (v45)
+					out[#out + 1] = { kind = "scene", obj = sc, a = sc.a, b = sc.b,
+						text = lvName(lv) .. " scene " .. n .. "  " .. sc.a .. "-" .. sc.b .. (sc.waiting and " (waiting)" or "") }
+				end
+				for _, m in ipairs(sc.moves) do
+					if f >= m.a and f <= m.b then out[#out + 1] = { kind = "move", obj = m, a = m.a, b = m.b, text = moveName(m) } end
+				end
+			end
+			for _, m in ipairs(lv.orphans) do
+				if f >= m.a and f <= m.b then out[#out + 1] = { kind = "move", obj = m, a = m.a, b = m.b, text = moveName(m) .. " outside the scenes" } end
+			end
+		end
+	end
+	for _, d in ipairs(M.deaths) do
+		if not d.placeholder and f >= d.a and f <= d.b then out[#out + 1] = { kind = "death", obj = d, a = d.a, b = d.b, text = "death " .. d.n .. " " .. d.a .. "-" .. d.b } end
+	end
+	for _, n in ipairs(CLIPS) do
+		local c = M.clips[n]
+		if c and not c.placeholder and f >= c.a and f <= c.b then out[#out + 1] = { kind = "clip", obj = c, name = n, a = c.a, b = c.b, text = "clip " .. n } end
+	end
+	for _, n in ipairs(MENUS) do
+		local mf = M.menus[n]
+		if mf and not mf.placeholder and f == mf.f then out[#out + 1] = { kind = "menu", obj = mf, name = n, a = f, b = f, text = "menu frame " .. n } end
+	end
+	return out
+end
+
+local started, playing = false, false
+local togglePlay = false			-- B4 pressed: play / pause at the next picture (v52)
+local font, fontSmall
+local stepIndex = 2
+local createTool = nil				-- what is being created: MOVE, SCENE, LEVEL... (v48)
+local lastCreate = "MOVE"			-- the last CREATE chosen: B1's menu opens on it
+local framesOf, framesFirst = nil, nil	-- EDIT > FRAMES: what is marked again, and its first mark
+local held, heldTicks = nil, 0
+local mode = "browse"				-- browse, list, death
+local pendingStart = nil			-- first frame of what is being marked
+local list, listPos, listWhat = nil, 1, nil
+local deathValue, lastDeath = 1, 1
+local newMove = nil
+local selected = nil				-- what EDIT works on, while its lists are open
+local message = "B1: menu"
+
+-- what L1 / R1 go through (v44), remembered for next time. (The order of
+-- the two frames, B3 from v44 to v47, is gone in v48: the second end of
+-- what is marked may be before or after the first one.)
+local ORDER_FILE = "./KimmyScript/Cfg/wizard.cfg"
+local GOTO_KINDS = { "LEVELS", "SCENES", "MOVES", "DEATHS", "CLIPS", "MENU FRAMES" }
+local navKind = "LEVELS"
+local TXT = { n = 1, s = 1, BIG = { 18, 24, 30 }, SMALL = { 14, 18, 22 }, NAMES = { "medium", "large", "extra large" }, fonts = {}, w = {}, wn = 0 }
+do
+	local h = io.open(ORDER_FILE, "r")
+	if h then h:close() else os.rename("./KimmyScript/Cfg/create.cfg", ORDER_FILE) end
+	h = io.open(ORDER_FILE, "r")
+	if h then
+		local t = h:read("*a") or ""
+		h:close()
+		local k = t:match("goto%s*=%s*([%u ]-)%s*\n")
+		for _, x in ipairs(GOTO_KINDS) do if x == k then navKind = k end end
+		local n = tonumber(t:match("text%s*=%s*(%d+)") or "")
+		if n and TXT.BIG[n] then TXT.n = n end
+	end
+end
+local function saveCfg()
+	local h = io.open(ORDER_FILE, "w")
+	if h then h:write("goto = " .. navKind .. "\ntext = " .. TXT.n .. "\ngap = " .. ((TM and TM.gap) or 1) .. "\n"); h:close() end
+end
+
+local function goTo(f)
+	if f < 0 then f = 0 end
+	if length and f > length - 1 then f = length - 1 end
+	discSkipToFrame(f)
+	discPause()
+	playing = false
+end
+
+local function step(dir) goTo(discGetFrame() + dir * STEPS[stepIndex]) end
+
+-- every list starts with EXIT MENU (v48), added here: 'pos' is a place in
+-- 'l' (0: on EXIT MENU), and the lists' choices are read without it
+local function openList(l, pos, what)
+	TM.listBack = nil
+	list = { "EXIT MENU" }
+	for _, x in ipairs(l) do list[#list + 1] = x end
+	listPos, listWhat, mode = (pos or 1) + 1, what, "list"
+end
+
+-- after a change, the same thing is found again by its kind and its frames
+local function reselect(kind, a, b, name)
+	selected = nil
+	for _, f in ipairs({ a, b }) do
+		for _, it in ipairs(itemsAt(f)) do
+			if it.kind == kind and it.a == a and it.b == b and (name == nil or it.name == name) then selected = it; return end
+		end
+	end
+end
+
+-- GO TO (B4): what the sheet holds, by kind, then the frame of the one
+-- chosen. The kind chosen is also what L1 / R1 go through: the previous or
+-- the next one from the frame where we are (v44)
+local gotoItems = nil
+
+-- everything of a kind, in the order of the movie: { text, f }
+local function navItems(kind)
+	local M = S.model
+	local out = {}
+	if not M then return out end
+	local function add(text, f) out[#out + 1] = { text = text, f = f } end
+	if kind == "LEVELS" then
+		for _, lv in ipairs(M.levels) do
+			add(lvName(lv) .. " " .. (lv.title or "") .. "  " .. lv.a .. "-" .. lv.b .. (lv.waiting and " (waiting)" or ""), lv.a)
+		end
+	elseif kind == "SCENES" then
+		for _, lv in ipairs(M.levels) do
+			for n, sc in ipairs(lv.scenes) do
+				add(lvName(lv) .. " scene " .. n .. "  " .. sc.a .. "-" .. sc.b .. (sc.waiting and " (waiting)" or ""), sc.a)
+			end
+		end
+	elseif kind == "MOVES" then
+		for _, lv in ipairs(M.levels) do
+			for _, sc in ipairs(lv.scenes) do for _, m in ipairs(sc.moves) do add(moveName(m), m.a) end end
+			for _, m in ipairs(lv.orphans) do add(moveName(m) .. " outside the scenes", m.a) end
+		end
+	elseif kind == "DEATHS" then
+		for _, d in ipairs(M.deaths) do if not d.placeholder then add("death " .. d.n .. "  " .. d.a .. "-" .. d.b, d.a) end end
+	elseif kind == "CLIPS" then
+		for _, n in ipairs(CLIPS) do
+			local c = M.clips[n]
+			if c and not c.placeholder then add("clip " .. n .. "  " .. c.a .. (c.b ~= c.a and ("-" .. c.b) or ""), c.a) end
+		end
+	else
+		for _, n in ipairs(MENUS) do
+			local mf = M.menus[n]
+			if mf and not mf.placeholder then add("menu frame " .. n .. "  " .. mf.f, mf.f) end
+		end
+	end
+	-- in the order of the movie (the same frame keeps the order of the sheet)
+	for i, x in ipairs(out) do x.i = i end
+	table.sort(out, function(p, q) if p.f ~= q.f then return p.f < q.f end return p.i < q.i end)
+	return out
+end
+
+local function navWord(kind) return (kind:lower():gsub("s$", "")) end
+
+local function openGoto(f)
+	local l, pos = {}, nil
+	for _, k in ipairs(GOTO_KINDS) do
+		l[#l + 1] = k .. (k == navKind and "   (L1/R1)" or "")
+		if k == navKind and not pos then pos = #l end
+	end
+	openList(l, pos, "goto")
+	message = "GO TO: what? (it also links L1 / R1)"
+end
+
+local function gotoKind(kind, f)
+	navKind = kind
+	saveCfg()
+	local items = navItems(kind)
+	if #items == 0 then message = "no " .. kind:lower() .. " in the sheet yet (L1/R1: " .. kind .. ")"; return end
+	local names, frames, pos = {}, {}, 1
+	for i, x in ipairs(items) do
+		names[i], frames[i] = x.text, x.f
+		if x.f <= f then pos = i end		-- the list opens where we are
+	end
+	gotoItems = frames
+	openList(names, pos, "gotoitem")
+	message = "GO TO: " .. kind:lower() .. "   (L1/R1: " .. kind .. ")"
+end
+
+-- L1 / R1: the previous / next one of the kind linked, from the frame here
+local function navJump(dir, f)
+	local items = navItems(navKind)
+	local target
+	if dir > 0 then
+		for _, x in ipairs(items) do if x.f > f then target = x; break end end
+	else
+		for i = #items, 1, -1 do if items[i].f < f then target = items[i]; break end end
+	end
+	if not target then
+		message = (dir > 0 and "no next " or "no previous ") .. navWord(navKind) .. " (B2: GO TO)"
+		return false
+	end
+	goTo(target.f)
+	message = target.text
+	return true
+end
+
+-- choosing a death: its 10th picture is shown (the middle one of a short death), then the
+-- frame where we were comes back
+local deathReturn = nil
+local function showDeath()
+	local d
+	for _, x in ipairs(S.model.deaths) do if x.n == deathValue and not x.placeholder then d = x end end
+	if d then goTo(d.b - d.a + 1 >= 20 and d.a + 9 or math.floor((d.a + d.b) / 2)) elseif deathReturn then goTo(deathReturn) end
+end
+local function enterDeath(value, what)
+	deathValue = math.min(TM.firstDeath(value), TM.deathMax())
+	deathReturn = discGetFrame()
+	mode, listWhat = "death", what
+	showDeath()
+end
+local function leaveDeath()
+	if deathReturn then goTo(deathReturn) end
+	deathReturn = nil
+end
+
+-- --------------------------------------------------------------------------
+-- The moves that need more than their name (v41): their inputs are chosen
+-- in lists, one question after the other, and the line is written complete.
+-- Each builder asks with ask(question, choices) and returns the move as it
+-- is written in the sheet: COMBO LEFT + B1, MULTI "L,B1,L"...
+
+local INPUTS = { "UP", "DOWN", "LEFT", "RIGHT", "UPLEFT", "UPRIGHT", "DOWNLEFT", "DOWNRIGHT", "B1", "B2", "B3" }
+local IS_INPUT = {}
+for _, i in ipairs(INPUTS) do IS_INPUT[i] = true end
+
+-- one question: the answer chosen, and its place in the list
+local function ask(question, choices, pos) return coroutine.yield(question, choices, pos) end
+
+-- 'after n' (the first frames of the window do not count yet) is not asked
+-- (v42): it is written by hand, after the closing quote
+
+local BUILDERS = {}
+BUILDERS.COMBO = function()
+	local l = { "ACTUP  B1 + UP", "ACTDOWN  B1 + DOWN", "ACTLEFT  B1 + LEFT", "ACTRIGHT  B1 + RIGHT" }
+	for _, i in ipairs(INPUTS) do l[#l + 1] = i end
+	local x = ask("COMBO: a shortcut, or the first input", l, 5):match("^(%S+)")
+	if x:match("^ACT") then return x end
+	local y = ask("COMBO " .. x .. " + ...: the second one, at the same time", INPUTS)
+	return "COMBO " .. x .. " + " .. y
+end
+BUILDERS.MULTI = function(a, b)
+	local seq, pos = {}, 1
+	local short = { "DOUBLE  B1 twice", "UD  up, down", "DU  down, up", "LR  left, right", "RL  right, left" }
+	while true do
+		local l = {}
+		local first = #seq == 0
+		if first then for _, x in ipairs(short) do l[#l + 1] = x end end
+		for _, i in ipairs(INPUTS) do l[#l + 1] = i end
+		if #seq > 0 then l[#l + 1] = "remove the last"; l[#l + 1] = "DONE" end
+		local ab = {}
+		for k, x in ipairs(seq) do ab[k] = TM.ABBR[x] or x end
+		local shown = table.concat(ab, " ")
+		local v, p = ask("MULTI " .. shown .. (#seq > 0 and ": the next input, or DONE" or ": a shortcut, or its first input"), l, first and (#short + pos) or pos)
+		local w = v:match("^(%S+)")
+		if first and p <= #short then return w end
+		if v == "DONE" then break
+		elseif v == "remove the last" then seq[#seq] = nil; pos = 1
+		else seq[#seq + 1] = v; pos = first and (p - #short) or p end
+	end
+	for k, x in ipairs(seq) do seq[k] = TM.ABBR[x] or x end
+	return "MULTI " .. table.concat(seq, " ")
+end
+BUILDERS.LOOP = function(a, b)
+	local s = ask("LOOP: a shortcut, or where the circle starts", { "LOOPLEFT  L 1 CW", "LOOPRIGHT  R 1 CCW", "UP", "DOWN", "LEFT", "RIGHT" }, 3):match("^(%S+)")
+	if s:match("^LOOP") then return s end
+	s = TM.ABBR[s] or s
+	local turns = { "Q  a quarter", "H  a half" }
+	for n = 1, 9 do turns[#turns + 1] = n .. (n == 1 and " turn" or " turns") end
+	local t = ask("LOOP " .. s .. ": how far", turns, 3):match("^(%S+)")
+	local d = ask("LOOP " .. s .. " " .. t .. ": which way", { "CW  clockwise", "CCW  the other way" }):match("^(%S+)")
+	local str = "LOOP " .. s .. " " .. t .. " " .. d
+	local btn = ask(str .. ": a button at the end?", { "no button", "B1", "B2", "B3" })
+	if btn ~= "no button" then str = str .. " " .. btn end
+	return str
+end
+BUILDERS.MASH = function()
+	local k = ask("MASH: what the player hammers", { "B1", "B1B2  both buttons in turn", "LR  left, right...",
+		"RL  right, left...", "UD  up, down...", "DU  down, up...", "UP", "DOWN", "LEFT", "RIGHT",
+		"UPLEFT", "UPRIGHT", "DOWNLEFT", "DOWNRIGHT", "B2", "B3" }):match("^(%S+)")
+	local t = "MASH" .. (k ~= "B1" and (" " .. k) or "")
+	local h = ask(t .. ": how hard", { "normal", "easier 1", "easier 2", "easier 3", "harder 1", "harder 2", "harder 3" })
+	return t .. (h ~= "normal" and (" " .. h) or "")
+end
+BUILDERS.HOLD = function()
+	return "HOLD " .. ask("HOLD: what the player holds", INPUTS)
+end
+BUILDERS.NOTHING = function()
+	local _, p = ask("NOTHING: the player must not touch anything", { "as usual", "silent  no sound, no points",
+		"blind  nothing shown either" })
+	return ({ "NOTHING", "NOTHING silent", "NOTHING blind" })[p]
+end
+BUILDERS.SKIP = function()
+	local _, p = ask("SKIP: the player may skip this part", { "the skip prompt is shown", "hidden: no prompt" })
+	return ({ "SKIP", "SKIP hidden" })[p]
+end
+-- EXIT: where the game goes on; > scene n from a scene that is not the
+-- last one, > level n from the last one (the rules of the sheet). The
+-- scenes and levels marked count, even those without a move yet: the sheet
+-- is right once they have one
+BUILDERS.EXIT = function(a, b, lv, sc)
+	local l, out = { "end of the scene, then as usual" }, { "EXIT" }
+	local function later(x) return x.waiting and x ~= sc and "  (no move yet)" or "" end
+	if lv and sc then
+		local mine
+		for n, x in ipairs(lv.scenes) do if x == sc then mine = n end end
+		if mine and mine < #lv.scenes then
+			for n, x in ipairs(lv.scenes) do
+				if x ~= sc then l[#l + 1] = "scene " .. n .. "  (" .. x.a .. "-" .. x.b .. ")" .. later(x); out[#out + 1] = "EXIT > scene " .. n end
+			end
+		elseif mine then
+			for _, x in ipairs(S.model.levels) do
+				if type(x.key) == "number" and x ~= lv then
+					l[#l + 1] = "level " .. x.key .. (x.title ~= "" and ("  " .. x.title) or "") .. later(x); out[#out + 1] = "EXIT > level " .. x.key
+				end
+			end
+		end
+	end
+	l[#l + 1] = "next level, even from here"; out[#out + 1] = "EXIT > next level"
+	local _, p = ask("EXIT: where the game goes on", l)
+	return out[p]
+end
+
+-- PATH, YESNO, CHOOSE (v54): each choice leads somewhere, asked in a list.
+-- Inside the scene: next (the movie goes on), a move after this one, or
+-- one to make later (a name is written, the move waits until a move has
+-- it: "connect" in its EDIT). Elsewhere: another scene, another level, the
+-- next level. A death everywhere. With two branches or more, where they
+-- join (go >). The question and the answers of a CHOOSE are written
+-- INSERT QUESTION HERE and ANSWER n, to change in the sheet; timer 10.
+
+local choiceBuilder, setChoice
+do
+-- what the choices of a move can lead to, around it
+local function choiceCtx(a, b, lv, sc)
+	local ctx = { a = a, b = b, lv = lv, sc = sc, taken = {}, names = {}, onLine = {} }
+	if sc then
+		for _, m in ipairs(sc.moves) do
+			if m.name then ctx.taken[m.name:lower()] = true end
+			local t = targetOf(S.lines[m.line])
+			if t then ctx.taken[t] = true end
+			for _, i in ipairs(m.sub) do
+				t = targetOf(S.lines[i])
+				if t then ctx.taken[t] = true end
+			end
+		end
+	end
+	return ctx
+end
+-- a new name: answer1, answer2... (or the one a choice waits with, kept)
+local function peekName(ctx, prefix)
+	if ctx.reuse then return ctx.reuse end
+	local n = 1
+	while ctx.taken[prefix .. n] do n = n + 1 end
+	return prefix .. n
+end
+local function newName(ctx, prefix)
+	local n = peekName(ctx, prefix)
+	ctx.reuse = nil
+	ctx.taken[n] = true
+	return n
+end
+-- the moves after this one in its scene, that play (they can be led to)
+local function movesAfter(ctx)
+	local out = {}
+	if ctx.sc then for _, m in ipairs(ctx.sc.moves) do if not m.waiting and m.a > ctx.b then out[#out + 1] = m end end end
+	return out
+end
+-- a move chosen: its name, or a new one put on it
+local function nameOf(ctx, m, prefix)
+	if m.name then return m.name end
+	if ctx.onLine[m.line] then return ctx.onLine[m.line] end
+	local n = newName(ctx, prefix)
+	ctx.onLine[m.line] = n
+	ctx.names[#ctx.names + 1] = { line = m.line, name = n }
+	return n
+end
+local function moveLabel(m)
+	return "move " .. m.a .. "-" .. m.b .. " " .. (m.text or m.kind) .. (m.name and ("  " .. m.name) or "")
+end
+local function askDeath(q)
+	local l, out, pos = {}, {}, 1
+	for _, d in ipairs(S.model.deaths) do
+		if not d.placeholder then
+			l[#l + 1] = "death " .. d.n .. "  (" .. d.a .. "-" .. d.b .. ")"; out[#out + 1] = d.n
+			if d.n == lastDeath then pos = #l end
+		end
+	end
+	if #l == 0 then l[1] = "death 1  (not marked yet)"; out[1] = 1 end
+	local _, p = ask(q .. ": which death", l, pos)
+	return "death " .. out[p]
+end
+-- one choice: what is written after its ">". 'which': "inside", "out", or
+-- "all" (EDIT)
+local function askDest(q, ctx, prefix, which)
+	local l, out = {}, {}
+	local function add(label, fn) l[#l + 1] = label; out[#out + 1] = fn end
+	local inside, outside = which ~= "out", which ~= "inside"
+	local function goesOn() add("next: the movie goes on", function() return "next" end) end
+	if inside then
+		goesOn()
+		add("connect later: a move to make (" .. peekName(ctx, prefix) .. ")", function() return newName(ctx, prefix) end)
+		for _, m in ipairs(movesAfter(ctx)) do add(moveLabel(m), function() return nameOf(ctx, m, prefix) end) end
+	end
+	if outside and ctx.lv then
+		local function later(x) return x.waiting and "  (no move yet)" or "" end
+		for n, x in ipairs(ctx.lv.scenes) do
+			if x ~= ctx.sc then add("scene " .. n .. "  (" .. x.a .. "-" .. x.b .. ")" .. later(x), function() return "scene " .. n end) end
+		end
+		for _, x in ipairs(S.model.levels) do
+			if type(x.key) == "number" and x ~= ctx.lv then
+				add("level " .. x.key .. (x.title ~= "" and ("  " .. x.title) or "") .. later(x), function() return "level " .. x.key end)
+			end
+		end
+		add("next level", function() return "next level" end)
+	end
+	add("death...", function() return askDeath(q) end)
+	if outside and not inside then goesOn() end
+	local _, p = ask(q, l)
+	return out[p]()
+end
+-- where the branches join: a name, or nil (no go)
+local function askJoin(q, ctx, noGo)
+	local l, out = {}, {}
+	local function add(label, fn) l[#l + 1] = label; out[#out + 1] = fn end
+	add("connect later: a move to make (" .. peekName(ctx, "join") .. ")", function() return newName(ctx, "join") end)
+	for _, m in ipairs(movesAfter(ctx)) do add(moveLabel(m), function() return nameOf(ctx, m, "join") end) end
+	add(noGo or "no go: each branch leaves the scene by itself", function() return nil end)
+	local _, p = ask(q, l)
+	return out[p]()
+end
+local function isBranch(to) return to == "next" or targetOf("> " .. to) ~= nil end
+local function askWhere(kind)
+	local _, p = ask(kind .. ": where its choices lead", { "inside this scene: branches to its moves",
+		"elsewhere: other scenes, other levels" })
+	return p == 1 and "inside" or "out"
+end
+local function subLine(left, to) return string.format("          %-6s > %s", left, to) end
+local function joinLine(j) return subLine("go", j) end
+
+BUILDERS.PATH = function(a, b, lv, sc)
+	local ctx = choiceCtx(a, b, lv, sc)
+	local which = askWhere("PATH")
+	local subs, branches, used = {}, 0, {}
+	while #subs < 4 do
+		local l = {}
+		for _, d in ipairs({ "UP", "DOWN", "LEFT", "RIGHT", "B1", "B2", "B3" }) do if not used[d] then l[#l + 1] = d end end
+		if #subs > 0 then l[#l + 1] = "DONE" end
+		local d = ask("PATH: " .. (#subs == 0 and "its first direction" or "another direction (4 at most), or DONE"), l)
+		if d == "DONE" then break end
+		used[d] = true
+		local to = askDest("PATH " .. d .. " > ...", ctx, "path", which)
+		if isBranch(to) then branches = branches + 1 end
+		subs[#subs + 1] = subLine(d, to)
+	end
+	if branches >= 2 then
+		local j = askJoin("PATH: where the branches join (go >)", ctx)
+		if j then subs[#subs + 1] = joinLine(j) end
+	end
+	return { text = "PATH", subs = subs, names = ctx.names }
+end
+BUILDERS.YESNO = function(a, b, lv, sc)
+	local ctx = choiceCtx(a, b, lv, sc)
+	local which = askWhere("YESNO")
+	local yes = askDest("YESNO: yes (B1 pressed) > ...", ctx, "yes", which)
+	local no = askDest("YESNO: no (nothing pressed) > ...", ctx, "no", which)
+	local subs = { subLine("yes", yes), subLine("no", no) }
+	if isBranch(yes) and isBranch(no) then
+		local j = askJoin("YESNO: where the yes branch joins the other (go >)", ctx)
+		if j then subs[#subs + 1] = joinLine(j) end
+	end
+	return { text = "YESNO", subs = subs, names = ctx.names }
+end
+BUILDERS.CHOOSE = function(a, b, lv, sc)
+	local ctx = choiceCtx(a, b, lv, sc)
+	local which = askWhere("CHOOSE")
+	local _, n = ask("CHOOSE: how many answers", { "1 answer", "2 answers", "3 answers", "4 answers" }, 2)
+	local subs, branches = {}, 0
+	for i = 1, n do
+		local to = askDest("CHOOSE: ANSWER " .. i .. " > ...", ctx, "answer", which)
+		if isBranch(to) then branches = branches + 1 end
+		subs[#subs + 1] = string.format('          %-22s > %s', '"ANSWER ' .. i .. '"', to)
+	end
+	if branches >= 2 then
+		local j = askJoin("CHOOSE: where the branches join (go >)", ctx)
+		if j then subs[#subs + 1] = joinLine(j) end
+	end
+	return { text = 'CHOOSE   "INSERT QUESTION HERE"   timer 10', subs = subs, names = ctx.names }
+end
+
+-- EDIT of a choice (v54): where one line under a PATH, YESNO or CHOOSE leads
+function choiceBuilder(m, i)
+	return function()
+		local l = S.lines[i]
+		local text = isWaiting(l) and unwait(l) or l
+		local first = (words(splitComment(text))[1] or {}).s or ""
+		local ctx = choiceCtx(m.a, m.b, m.level, m.scene)
+		local now = targetOf(l)
+		local names = {}
+		for _, x in ipairs(m.scene and m.scene.moves or {}) do if x.name and not x.waiting then names[x.name:lower()] = true end end
+		-- still to connect: its name is kept for the move chosen
+		if now and not names[now] then ctx.reuse = now end
+		local to
+		if first:lower() == "go" then
+			to = askJoin("go > ...: where the branches join", ctx, "no go: remove this line")
+		else
+			local prefix = m.kind == "CHOOSE" and "answer" or (m.kind == "YESNO" and first:lower()) or "path"
+			if prefix ~= "yes" and prefix ~= "no" and prefix ~= "answer" then prefix = "path" end
+			to = askDest(trim(text:sub(1, (arrow(text)))) .. " ...", ctx, prefix, "all")
+		end
+		return { line = i, to = to, names = ctx.names }
+	end
+end
+function setChoice(spec)
+	snapshot()
+	for _, n in ipairs(spec.names or {}) do setLineName(n.line, n.name) end
+	local i = spec.line
+	if spec.to == nil then
+		table.remove(S.lines, i)
+	else
+		local l = S.lines[i]
+		local waiting = isWaiting(l)
+		local text = waiting and unwait(l) or l
+		local code, comment = splitComment(text)
+		local at = arrow(text)
+		local out = code:sub(1, at) .. " " .. spec.to .. (comment ~= "" and ("   " .. comment) or "")
+		S.lines[i] = waiting and wait(out) or out
+	end
+	changed()
+end
+
+TM = {}
+function TM.levelClash(lv, a, b)
+	for _, x in ipairs(S.model.levels) do
+		if x ~= lv and a <= x.b and b >= x.a then return "it would go over " .. lvName(x) .. " (" .. x.a .. "-" .. x.b .. ")" end
+	end
+end
+TM.gap = 1
+do
+	local h = io.open(ORDER_FILE, "r")
+	if h then
+		local n = tonumber((h:read("*a") or ""):match("gap%s*=%s*(%d+)") or "")
+		h:close()
+		if n and n >= 1 and n <= 20 then TM.gap = n end
+	end
+end
+TM.GS = {
+	{ "SCORES", { "SCOREMOVE", 100 }, { "BUFFMOVE", 100 }, { "SCORESCENE", 100 }, { "DEATHPENALTY", 100 },
+		{ "SCORELEVEL", 100 }, { "PERFECTBONUS", 100 }, { "SCOREGAME", 100 }, { "EXTRALIFE", 1000 } },
+	{ "GAME TYPES", { "AllowNormal" }, { "AllowLifeBar" }, { "AllowPercent" }, { "AllowSurvivor" }, { "AllowDie" }, { "AllowKid" } },
+	{ "LIFE BAR", { "BarSize", 1, 1 }, { "BarMin", 1 }, { "BarBonus", 1 } },
+	{ "LEVEL ORDER", { "AllowRandom" } },
+	{ "DIFFICULTY", { "PenalNormal", 1 }, { "PenalHard", 1 }, { "PenalExtreme", 1 } },
+	{ "TROPHIES", { "LvlTrophy3", "trophy" }, { "LvlTrophy4", "trophy" } },
+	{ "DISPLAY", { "pathLook", 1, 1, 5 }, { "miscR", 1, 0, 255 }, { "miscG", 1, 0, 255 }, { "miscB", 1, 0, 255 } },
+	{ "OPTIONS", { "ForceRewind" }, { "altCfg" }, { "FreezeDeath" }, { "ContinueCount" } },
+}
+TM.GAMETYPES = { "AllowNormal", "AllowLifeBar", "AllowPercent", "AllowSurvivor", "AllowDie", "AllowKid" }
+TM.DEF = {}
+for _, g in ipairs(TM.GS) do
+	for k = 2, #g do
+		local e = g[k]
+		e.n, e.trophy = e[1], e[2] == "trophy"
+		e.step = type(e[2]) == "number" and e[2] or nil
+		e.min, e.max = e[3] or 0, e[4] or 99999999
+		local v = rawget(_G, e.n)
+		if v == nil then v = (e.step or e.trophy) and 0 or false end
+		TM.DEF[e.n] = v
+	end
+end
+function TM.gsText(v)
+	if v == true then return "yes" elseif v == false then return "no" end
+	return string.format("%d", v)
+end
+function TM.gsFind(name)
+	local M = S.model
+	local a = M.sections.GAME
+	if not a then return nil end
+	local b = M.endLine or #S.lines
+	for _, x in pairs(M.sections) do if x > a and x < b then b = x end end
+	for _, lv in ipairs(M.levels) do if lv.line > a and lv.line < b then b = lv.line end end
+	local last = a
+	for i = a + 1, b - 1 do
+		local l = S.lines[i]
+		if not isComment(l) and not isWaiting(l) then
+			local w = words(splitComment(l))
+			if w[1] then
+				last = i
+				if w[1].s == name then
+					local v = w[2] and w[2].u
+					if v == "YES" or v == "TRUE" then v = true elseif v == "NO" or v == "FALSE" then v = false
+					else v = w[2] and tonumber(w[2].s) end
+					return last, a, i, v
+				end
+			end
+		end
+	end
+	return last, a
+end
+function TM.gsValue(name)
+	local _, _, i, v = TM.gsFind(name)
+	if i and v ~= nil then return v end
+	return TM.DEF[name]
+end
+function TM.gsWrite(name, v)
+	local last, a, i, v0 = TM.gsFind(name)
+	local text = TM.gsText(v)
+	local back = v == TM.DEF[name]
+	if i and v0 == v then return name .. " " .. text .. ": unchanged" end
+	if not i and back then return name .. " " .. text .. ", its default: nothing to write" end
+	snapshot()
+	if i then
+		if back then
+			table.remove(S.lines, i)
+		else
+			local l = S.lines[i]
+			local code, comment = splitComment(l)
+			local new = string.format("%s%-18s %s", l:match("^%s*"), name, text)
+			if comment ~= "" then new = (#new < #code and (new .. string.rep(" ", #code - #new)) or (new .. "   ")) .. comment end
+			S.lines[i] = new
+		end
+	elseif a then
+		insertLines(last + 1, { string.format("  %-18s %s", name, text) })
+	else
+		local at = S.model.sheetLine
+		if S.lines[at + 1] and trim(S.lines[at + 1]) == "" then
+			insertLines(at + 2, { "GAME", string.format("  %-18s %s", name, text), "" })
+		else
+			insertLines(at + 1, { "", "GAME", string.format("  %-18s %s", name, text), "" })
+		end
+	end
+	changed()
+	if back then return name .. " back to its default, " .. text .. ": its line is removed (B3 undoes)" end
+	return name .. " " .. text .. " (B3 undoes)"
+end
+function TM.backTo(fn)
+	list[1] = "BACK"
+	TM.listBack = fn
+end
+function TM.goBack()
+	local fn = TM.listBack
+	TM.listBack = nil
+	mode = "browse"
+	fn()
+end
+function TM.askGroups(said)
+	local l = {}
+	for _, g in ipairs(TM.GS) do l[#l + 1] = g[1] end
+	l[#l + 1] = "RESET ALL TO DEFAULT"
+	openList(l, TM.gsGroup or 1, "gsgroup")
+	TM.backTo(function() TM.openMenu(discGetFrame()) end)
+	message = said or "GAME SETTINGS: the GAME part of the sheet, default values first"
+end
+function TM.askReset()
+	openList({ "yes: every game setting back to its default" }, 1, "gsreset")
+	TM.backTo(TM.askGroups)
+	message = "RESET ALL TO DEFAULT: the setting lines of GAME are removed (B3 undoes)"
+end
+function TM.gsResetAll()
+	local gone = {}
+	for _, g in ipairs(TM.GS) do
+		for k = 2, #g do
+			local _, _, i = TM.gsFind(g[k].n)
+			if i then gone[#gone + 1] = i end
+		end
+	end
+	if #gone == 0 then return "every game setting is already at its default" end
+	snapshot()
+	table.sort(gone, function(x, y) return x > y end)
+	for _, i in ipairs(gone) do table.remove(S.lines, i) end
+	changed()
+	return #gone .. " setting line(s) removed: every game setting is at its default (B3 undoes)"
+end
+function TM.askGroup(g, said)
+	TM.gsGroup = g
+	local l = {}
+	local G = TM.GS[g]
+	for k = 2, #G do
+		local e = G[k]
+		local v = TM.gsValue(e.n)
+		l[#l + 1] = e.n .. ": " .. TM.gsText(v) .. (v == TM.DEF[e.n] and "  (default)" or "")
+	end
+	openList(l, TM.gsPos or 1, "gsset")
+	TM.backTo(function() TM.gsPos = nil; TM.askGroups() end)
+	message = said or ("GAME SETTINGS: " .. G[1])
+end
+function TM.pickSetting(i)
+	local e = TM.GS[TM.gsGroup][i + 1]
+	TM.gsPos = i
+	local v = TM.gsValue(e.n)
+	if e.trophy then
+		local l = { "0  no trophy" }
+		local pos = 1
+		TM.gsTrophies = { 0 }
+		for _, lv in ipairs(S.model.levels) do
+			if type(lv.key) == "number" then
+				l[#l + 1] = lvName(lv) .. (lv.title ~= "" and ("  " .. lv.title) or "")
+				TM.gsTrophies[#TM.gsTrophies + 1] = lv.key
+				if lv.key == v then pos = #l end
+			end
+		end
+		TM.gsE = e
+		openList(l, pos, "gstrophy")
+		TM.backTo(function() TM.askGroup(TM.gsGroup) end)
+		message = e.n .. ": the level to finish without dying"
+	elseif e.step then
+		TM.gs = { e = e, v = v }
+		mode = "gset"
+		message = e.n .. ": UP / DOWN, B2 default, then B1 (B3 cancels)"
+	else
+		if v and TM.gsLast(e.n) then
+			TM.askGroup(TM.gsGroup, "at least one game type stays offered: " .. e.n .. " stays yes")
+			return
+		end
+		TM.askGroup(TM.gsGroup, TM.gsWrite(e.n, not v))
+	end
+end
+function TM.gsLast(name)
+	for _, n in ipairs(TM.GAMETYPES) do
+		if n ~= name and TM.gsValue(n) then return false end
+	end
+	for _, n in ipairs(TM.GAMETYPES) do if n == name then return true end end
+	return false
+end
+function TM.setTrophy(i)
+	local key = TM.gsTrophies[i]
+	local said = TM.gsWrite(TM.gsE.n, key)
+	local tf = S.model.menus.Trophy
+	if key ~= 0 and (not tf or tf.placeholder or tf.f == 0) then said = said .. ": mark the Trophy picture in MENU FRAMES" end
+	TM.askGroup(TM.gsGroup, said)
+end
+function TM.gsStep(w)
+	local g = TM.gs
+	local d = (w == SW_UP and 1) or (w == SW_DOWN and -1) or (w == SW_RIGHT and 10) or (w == SW_LEFT and -10)
+	if not d then return false end
+	g.v = math.max(g.e.min, math.min(g.e.max, g.v + d * g.e.step))
+	message = g.e.n .. ": " .. TM.gsText(g.v) .. " (default " .. TM.gsText(TM.DEF[g.e.n]) .. "), B1 ok, B3 cancels"
+	return true
+end
+function TM.gsPress(w)
+	if TM.gsStep(w) then return end
+	local g = TM.gs
+	if w == SW_B2 then
+		g.v = TM.DEF[g.e.n]
+		message = g.e.n .. ": " .. TM.gsText(g.v) .. ", its default, B1 ok, B3 cancels"
+	elseif w == SW_B1 then
+		TM.gs = nil
+		mode = "browse"
+		TM.askGroup(TM.gsGroup, TM.gsWrite(g.e.n, g.v))
+	elseif w == SW_B3 or w == SW_START or w == SW_ESC then
+		TM.gs = nil
+		mode = "browse"
+		TM.askGroup(TM.gsGroup, g.e.n .. " unchanged")
+	end
+end
+function TM.askSheet()
+	openList(TM.sheets, 1, "sheet")
+	message = "OPEN ANOTHER SHEET: the sheets of this folder"
+end
+function TM.openSheet(name)
+	WizardSheet = name
+	S.path, S.from, S.error, S.warning, S.model = nil, nil, nil, nil, nil
+	S.undo = {}
+	openMessage = nil
+	open()
+	message = openMessage or ("working in " .. tostring(S.path))
+	print("KimmyScript wizard: " .. tostring(S.path))
+end
+function TM.askGap()
+	local l = {}
+	for n = 1, 20 do l[#l + 1] = n == 1 and "1 (right after)" or tostring(n) end
+	openList(l, TM.gap, "gap")
+	message = "NEXT LEVEL GAP: the next level starts this many frames after the end of the last one"
+end
+function TM.findLevel(key)
+	for _, x in ipairs(S.model.levels) do if x.key == key then return x end end
+end
+function TM.nextFrames()
+	local last
+	for _, x in ipairs(S.model.levels) do if not last or x.b > last.b then last = x end end
+	if not last then return end
+	local lf = last.b + TM.gap
+	if length and lf > length - 1 then lf = nil end
+	return lf, last
+end
+function TM.startNext(tool, nf, ref)
+	goTo(nf)
+	lastCreate, createTool, pendingStart = tool, tool, nf
+	message = "CREATE NEXT LEVEL at " .. nf .. ", after " .. lvName(ref) .. (TM.gap > 1 and (" and a gap of " .. TM.gap) or "") .. ": go to its last frame, then B1 (B3 cancels)"
+end
+function TM.nextProblem(f)
+	local a = pendingStart
+	if createTool == "NEXT LEVEL" then
+		if f < a + 2 then return "a level needs at least 3 frames: its last frame is " .. (a + 2) .. " or after" end
+		return TM.levelClash(nil, a, f)
+	end
+end
+function TM.lastScene(lv)
+	local last
+	for _, sc in ipairs(lv.scenes) do if not last or sc.b > last.b then last = sc end end
+	return last
+end
+function TM.sceneHeir(sc)
+	local lv = sc.level
+	for n, x in ipairs(lv.scenes) do
+		if x == sc then return n > 1 and "the scene before" or "the next scene" end
+	end
+end
+function TM.deleteScene(sc)
+	local lv = sc.level
+	if #lv.scenes == 1 then return "the only scene of its level: delete the level, or its moves" end
+	local n
+	for k, x in ipairs(lv.scenes) do if x == sc then n = k end end
+	local heir = n > 1 and lv.scenes[n - 1] or lv.scenes[n + 1]
+	snapshot()
+	if n > 1 then
+		S.lines[heir.line] = setRange(S.lines[heir.line], heir.a - lv.off, sc.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+	else
+		S.lines[heir.line] = setRange(S.lines[heir.line], sc.a - lv.off, heir.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+	end
+	local gone = { sc.line }
+	local k = sc.line - 1
+	while k > lv.line and trim(S.lines[k]) == "" do gone[#gone + 1] = k; k = k - 1 end
+	for _, i in ipairs(sc.sub) do gone[#gone + 1] = i end
+	for _, m in ipairs(sc.moves) do
+		gone[#gone + 1] = m.line
+		for _, i in ipairs(m.sub) do gone[#gone + 1] = i end
+	end
+	table.sort(gone, function(x, y) return x > y end)
+	for _, i in ipairs(gone) do table.remove(S.lines, i) end
+	S.model = parse(S.lines)
+	rehome(findLevel(lv.line))
+	changed()
+end
+function TM.convert(path)
+	local h = io.open(path, "rb")
+	if not h then return nil, "cannot be read" end
+	local raw = h:read("*a")
+	h:close()
+	if kimmyConvertDirk == nil then
+		local ok, err = pcall(dofile, "./KimmyScript/Script/convert.kimmy")
+		if not ok or kimmyConvertDirk == nil then return nil, "not a sheet, and convert.kimmy is missing: " .. tostring(err) end
+	end
+	local text, said, info = kimmyConvertDirk(raw, DIR, true)
+	if not text then return nil, "not a sheet, and it cannot be converted (" .. tostring(said and said[1]) .. ")" end
+	if info.levelLines == 0 then return nil, "not a sheet, and no Level[n] line: not a KimmyScript game" end
+	local lines = {}
+	for l in text:gmatch("(.-)\r?\n") do lines[#lines + 1] = l end
+	for _, l in ipairs(said or {}) do print("KimmyScript wizard: " .. l) end
+	local msg = "converted to a sheet: " .. info.levels .. " level(s) of " .. info.of
+	if info.kept > 0 then msg = msg .. ", " .. info.kept .. " kept in Lua after it" end
+	local why = ""
+	if info.why and info.why[1] then
+		local w = info.why[1]
+		why = ". LEVEL " .. tostring(w[1]) .. " stays in Lua: " .. tostring(w[4])
+		if #info.why > 1 then why = why .. " (" .. (#info.why - 1) .. " more: see the \"-- Wizard\" lines after ]])" end
+	end
+	return lines, msg, why
+end
+function TM.logoStart(oh)
+	local name = oh >= 800 and "wizard_logo.png" or "wizard_logo_small.png"
+	local path = "./KimmyScript/Cfg/" .. name
+	if not exists(path) then return end
+	local ok, h = pcall(spriteLoad, path)
+	if ok and h then TM.logo = { h = h, ticks = 180 } end
+end
+function TM.logoDraw(ow, oh)
+	local L = TM.logo
+	L.ticks = L.ticks - 1
+	if L.ticks <= 0 then TM.logo = nil; return false end
+	local w, h = spriteGetWidth(L.h) or 0, spriteGetHeight(L.h) or 0
+	if dirkSpriteAlpha ~= nil and L.ticks < 20 then dirkSpriteAlpha(L.h, math.floor(255 * L.ticks / 20)) end
+	spriteDraw(math.floor((ow - w) / 2), math.floor((oh - h) / 2), L.h)
+	return true
+end
+TM.DIFF = { "Easy", "Normal", "Hard", "Extreme" }
+function TM.isDiff(name)
+	for _, n in ipairs(TM.DIFF) do if n == name then return true end end
+	return false
+end
+function TM.menuList()
+	local l = {}
+	for _, n in ipairs(MENUS) do if not TM.isDiff(n) then l[#l + 1] = n end end
+	l[#l + 1] = "DIFFICULTY SCREENS"
+	return l
+end
+function TM.diffStart(f)
+	TM.diff = { frames = { f }, n = 2 }
+	message = "DIFFICULTY SCREENS: Easy " .. f .. ". Now Normal: go to its picture, B1 (B3 cancels)"
+end
+function TM.diffAsk()
+	openList({ "EXTREME: mark it too", "DONE: 3 difficulties" }, 2, "diff")
+	message = "DIFFICULTY SCREENS: Easy, Normal, Hard marked. Extreme too?"
+end
+function TM.diffMark(f)
+	local d = TM.diff
+	if d.ask then TM.diffAsk(); return end
+	for i, x in ipairs(d.frames) do
+		if x == f then message = "already the " .. TM.DIFF[i] .. " picture: B1 on another one (B3 cancels)"; return end
+	end
+	d.frames[d.n] = f
+	if d.n == 3 then
+		d.ask = true
+		TM.diffAsk()
+	elseif d.n == 4 then
+		TM.diffWrite()
+	else
+		d.n = d.n + 1
+		message = "DIFFICULTY SCREENS: " .. TM.DIFF[d.n - 1] .. " " .. f .. ". Now " .. TM.DIFF[d.n] .. ": go to its picture, B1 (B3 cancels)"
+	end
+end
+function TM.dropMenus(names)
+	local gone = {}
+	for _, n in ipairs(names) do
+		local m = S.model.menus[n]
+		if m then gone[#gone + 1] = m.line end
+	end
+	if #gone == 0 then return "no difficulty screen in the sheet" end
+	snapshot()
+	table.sort(gone, function(x, y) return x > y end)
+	for _, i in ipairs(gone) do table.remove(S.lines, i) end
+	changed()
+end
+function TM.diffWrite()
+	local d = TM.diff
+	TM.diff = nil
+	snapshot()
+	S.noSnap = true
+	local err
+	for i, f in ipairs(d.frames) do err = err or setMenu(TM.DIFF[i], f) end
+	if not err and #d.frames == 3 and S.model.menus.Extreme then err = TM.dropMenus({ "Extreme" }) end
+	S.noSnap = nil
+	if err then message = err; return end
+	local parts = {}
+	for i, f in ipairs(d.frames) do parts[#parts + 1] = TM.DIFF[i] .. " " .. f end
+	message = "DIFFICULTY SCREENS: " .. table.concat(parts, ", ") .. " (B3 undoes)"
+	if S.model.diffChoice == false then message = message .. ": IngameDiffchoice no in GAME still hides them" end
+end
+TM.AUTO = { LEVELS = { one = "level", word = "LEVEL" }, DEATHS = { one = "death", word = "death" } }
+function TM.askAuto()
+	openList({ "AUTO CREATE LEVELS", "AUTO CREATE DEATHS", "AUTO MENU FRAMES" }, TM.autoPos or 1, "autosub")
+	TM.backTo(function() TM.openMenu(discGetFrame()) end)
+	message = "AUTO: Wizard guides you, B3 cancels at any step"
+end
+function TM.menuStart()
+	local names = {}
+	for _, n in ipairs(MENUS) do if not TM.isDiff(n) then names[#names + 1] = n end end
+	TM.mf = { names = names, n = 1, frames = {} }
+	TM.menuAsk()
+end
+function TM.menuAsk(said)
+	local mf = TM.mf
+	local name = mf.names[mf.n]
+	local now = S.model.menus[name]
+	local where = (now and not now.placeholder) and (" (now " .. now.f .. ")") or ""
+	if mf.n == 1 then
+		message = "AUTO MENU FRAMES: go to the first menu frame, " .. name .. where .. ", then B1. B2 skips it (B3 cancels)"
+	else
+		message = "AUTO MENU FRAMES: " .. (said or "") .. name .. where .. ": go to its picture, B1. B2 skips it (B3 cancels)"
+	end
+end
+function TM.menuNext(said)
+	local mf = TM.mf
+	mf.n = mf.n + 1
+	if mf.n > #mf.names then return TM.menuWrite() end
+	TM.menuAsk(said)
+end
+function TM.menuMark(f)
+	local mf = TM.mf
+	mf.frames[mf.names[mf.n]] = f
+	if mf.n == 1 then stepIndex = 1 end
+	TM.menuNext(mf.names[mf.n] .. " " .. f .. ". ")
+end
+function TM.menuSkip()
+	local mf = TM.mf
+	TM.menuNext(mf.names[mf.n] .. " skipped. ")
+end
+function TM.menuWrite()
+	local mf = TM.mf
+	TM.mf = nil
+	local parts = {}
+	for _, n in ipairs(mf.names) do if mf.frames[n] then parts[#parts + 1] = n .. " " .. mf.frames[n] end end
+	if #parts == 0 then message = "AUTO MENU FRAMES: nothing written"; return end
+	snapshot()
+	S.noSnap = true
+	local err
+	for _, n in ipairs(mf.names) do if mf.frames[n] and not err then err = setMenu(n, mf.frames[n]) end end
+	S.noSnap = nil
+	message = err or ("AUTO MENU FRAMES: " .. table.concat(parts, ", ") .. " (B3 undoes)")
+end
+function TM.autoStart(kind)
+	if dirkScanStart == nil then message = "AUTO CREATE " .. kind .. ": needs the Dirk of 15/10/2026 or later"; return end
+	TM.auto = { kind = kind }
+	message = "AUTO CREATE " .. kind .. ": go to the first frame of the first " .. TM.AUTO[kind].one .. ", then B1 (B3 cancels)"
+end
+function TM.autoMark(f)
+	local A = TM.auto
+	if A.scanning then return end
+	local one = TM.AUTO[A.kind].one
+	if not A.first then
+		A.first = f
+		message = "AUTO CREATE " .. A.kind .. ": from " .. f .. ". Now go to the last frame of the last " .. one .. ", then B1 (B3 cancels)"
+		return
+	end
+	local a, b = A.first, f
+	if b < a then a, b = b, a end
+	if b - a < 2 then message = "AUTO CREATE " .. A.kind .. ": the last frame must be further on (B3 cancels)"; return end
+	if not dirkScanStart(a, b) then message = "AUTO CREATE " .. A.kind .. ": could not start, try again"; return end
+	A.a, A.b, A.scanning = a, b, true
+	message = "AUTO CREATE " .. A.kind .. ": looking for black and silence from " .. a .. " to " .. b .. "... (B3 cancels)"
+end
+function TM.autoPoll()
+	local A = TM.auto
+	local st, p, e = dirkScanStatus()
+	if st == "running" then
+		message = "AUTO CREATE " .. A.kind .. ": looking for black and silence from " .. A.a .. " to " .. A.b .. "... "
+			.. math.floor((p or 0) * 100) .. "% (B3 cancels)"
+	elseif st == "done" then
+		A.scanning = false
+		A.pieces = dirkScanResult() or {}
+		A.join = {}
+		if #A.pieces == 0 then TM.auto = nil; message = "AUTO CREATE " .. A.kind .. ": nothing found from " .. A.a .. " to " .. A.b; return end
+		TM.autoList(1)
+	else
+		TM.auto = nil
+		message = "AUTO CREATE: " .. ((e and e ~= "") and e or "stopped")
+	end
+end
+function TM.autoGroups()
+	local A, M = TM.auto, S.model
+	local groups, g = {}, nil
+	for i, p in ipairs(A.pieces) do
+		if not g then g = { a = p[1], first = i } end
+		g.b, g.last = p[2], i
+		if not A.join[i] or i == #A.pieces then groups[#groups + 1] = g; g = nil end
+	end
+	local key, n = 0, 0
+	for _, lv in ipairs(M.levels) do if type(lv.key) == "number" and lv.key > key then key = lv.key end end
+	for _, d in ipairs(M.deaths) do if not d.placeholder and d.n > n then n = d.n end end
+	for _, gr in ipairs(groups) do
+		if A.kind == "LEVELS" then
+			for _, lv in ipairs(M.levels) do
+				if gr.a <= lv.b and gr.b >= lv.a then gr.kept = "LEVEL " .. tostring(lv.key) .. " already there (" .. lv.a .. "-" .. lv.b .. "): kept" end
+			end
+			if not gr.kept and gr.b - gr.a < 2 then gr.kept = "too short for a level" end
+			if not gr.kept then key = key + 1; gr.num = key end
+		else
+			for _, d in ipairs(M.deaths) do
+				if not d.placeholder and gr.a <= d.b and gr.b >= d.a then gr.kept = "death " .. d.n .. " already there (" .. d.a .. "-" .. d.b .. "): kept" end
+			end
+			if not gr.kept then n = n + 1; gr.num = n end
+		end
+	end
+	return groups
+end
+function TM.autoList(pos)
+	local A = TM.auto
+	local groups = TM.autoGroups()
+	local lines, made, firstNew = {}, 0, nil
+	A.lineOf = {}
+	for _, gr in ipairs(groups) do
+		if gr.num then made = made + 1; firstNew = firstNew or gr.a end
+		for i = gr.first, gr.last do
+			local p = A.pieces[i]
+			local text
+			if i == gr.first then
+				text = (gr.num and (TM.AUTO[A.kind].word .. " " .. gr.num) or "kept") .. "   " .. gr.a .. "-" .. gr.b
+					.. (gr.kept and ("   " .. gr.kept) or "")
+			else
+				text = "   + " .. p[1] .. "-" .. p[2]
+			end
+			lines[#lines + 1] = text
+			A.lineOf[#lines + 1] = i
+		end
+	end
+	table.insert(lines, 1, made > 0 and ("CREATE " .. made .. " " .. (made == 1 and TM.AUTO[A.kind].one or A.kind:lower())) or "NOTHING TO CREATE")
+	A.made = made
+	openList(lines, pos or 1, "auto")
+	listPos = math.min(listPos, #list)
+	message = "AUTO CREATE " .. A.kind .. ": " .. #A.pieces .. " found from " .. A.a .. " to " .. A.b
+		.. ". B1 on a line: joined with the next one, or apart again"
+	if A.kind == "LEVELS" and firstNew then
+		for _, lv in ipairs(S.model.levels) do
+			if lv.a > firstNew then
+				message = message .. ". LEVEL " .. tostring(lv.key) .. " comes later in the movie: the new levels before it get higher numbers"
+				break
+			end
+		end
+	end
+end
+function TM.autoPick(i)
+	local A = TM.auto
+	if i == 1 then return TM.autoMake() end
+	local p = A.lineOf[i]
+	if not p then TM.autoList(i); return end
+	if p == #A.pieces then TM.autoList(i); message = "the last one: nothing after it to join"; return end
+	A.join[p] = not A.join[p]
+	TM.autoList(i)
+end
+function TM.autoMake()
+	local A = TM.auto
+	local groups = TM.autoGroups()
+	TM.auto = nil
+	if A.made == 0 then message = "AUTO CREATE " .. A.kind .. ": nothing created"; return end
+	snapshot()
+	S.noSnap = true
+	local made, first, last, err = 0, nil, nil, nil
+	for _, gr in ipairs(groups) do
+		if gr.num and not err then
+			local e, num
+			if A.kind == "LEVELS" then e, num = addLevel(gr.a, gr.b) else num, e = addDeath(gr.a, gr.b) end
+			if e then err = e else made = made + 1; first = first or num; last = num end
+		end
+	end
+	S.noSnap = nil
+	local what = A.kind == "LEVELS" and "LEVEL " or "death "
+	message = "AUTO CREATE " .. A.kind .. ": " .. made .. " created" .. (first and (", " .. what .. first .. (last ~= first and (" to " .. last) or "")) or "")
+		.. (err and (", then: " .. err) or "") .. " (B3 undoes)"
+end
+function TM.addRelative()
+	local M = S.model
+	local at = M.fpsLine or M.sections.GAME
+	if not at then return end
+	insertLines(at + 1, { "  RelativeFrames     yes" })
+	S.model = parse(S.lines)
+	check()
+	write()
+	openMessage = (openMessage and (openMessage .. ": ") or "") .. "RelativeFrames yes added (frames count from each intro)"
+end
+function TM.introEnd(lv, g)
+	local here = levelAt(g + 1)
+	if not here or here.key ~= lv.key then return "only in the intro or the first scene of " .. lvName(lv) end
+	return introEndsHere(g + 1)
+end
+function TM.sceneInLevel(lv, sc, a, b)
+	local last = TM.lastScene(lv)
+	if a < lv.a then return "it would start before the level (" .. lv.a .. "): EDIT " .. lvName(lv) .. " > FRAMES" end
+	if sc == last and b ~= sc.b then return "the end of the last scene is the end of the level: EDIT " .. lvName(lv) .. " > FRAMES" end
+	if b > last.b then return "it would go past the end of the level (" .. last.b .. "): EDIT " .. lvName(lv) .. " > FRAMES" end
+end
+function TM.levelFrames(lv, a, b)
+	if S.model.relative and a ~= lv.a then return "here frames count from each intro: the start of the level cannot move" end
+	local err = TM.levelClash(lv, a, b)
+	if err then return err end
+	local last = TM.lastScene(lv)
+	if not last then return "no scene in the level" end
+	local first = lv.scenes[1]
+	if lv.ia and a > lv.ib then return "the intro (" .. lv.ia .. "-" .. lv.ib .. ") needs at least one frame: start at " .. lv.ib .. " or before" end
+	if not lv.ia and a > first.b then return "the scene " .. first.a .. "-" .. first.b .. " would be outside the level: delete it first" end
+	if b < last.a then return "the scene " .. last.a .. "-" .. last.b .. " would be outside the level: delete it first" end
+	local function check(m)
+		if m.b > b or m.a < a then return "the move " .. m.a .. "-" .. m.b .. " " .. m.kind .. " would be outside the level" end
+	end
+	for _, sc in ipairs(lv.scenes) do for _, m in ipairs(sc.moves) do err = err or check(m) end end
+	for _, m in ipairs(lv.orphans) do err = err or check(m) end
+	if err then return err end
+	if a == lv.a and b == last.b then return end
+	snapshot()
+	if lv.ia then
+		S.lines[lv.introLine] = setRange(S.lines[lv.introLine], a, lv.ib, "[Ii][Nn][Tt][Rr][Oo]")
+	elseif a ~= first.a then
+		S.lines[first.line] = setRange(S.lines[first.line], a - lv.off, first.b - lv.off, "[Ss][Cc][Ee][Nn][Ee]")
+	end
+	if b ~= last.b then
+		local scenes = {}
+		for _, sc in ipairs(lv.scenes) do
+			local lines = sceneLines(sc)
+			if sc == last then lines[1] = setRange(lines[1], sc.a - lv.off, b - lv.off, "[Ss][Cc][Ee][Nn][Ee]") end
+			scenes[#scenes + 1] = { a = sc.a, b = sc == last and b or sc.b, lines = lines, from = sc.line }
+		end
+		rehome(lv, scenes)
+	end
+	changed()
+end
+TM.ABBR = { UP = "U", DOWN = "D", LEFT = "L", RIGHT = "R", UPLEFT = "UL", UPRIGHT = "UR", DOWNLEFT = "DL", DOWNRIGHT = "DR" }
+function TM.deathMax()
+	local n = 1
+	for _, d in ipairs(S.model and S.model.deaths or {}) do if not d.placeholder and d.n > n then n = d.n end end
+	return n
+end
+function TM.freeze() return S.model ~= nil and TM.gsValue("FreezeDeath") == true end
+function TM.deathMin() return TM.freeze() and -4 or -3 end
+function TM.firstDeath(d)
+	if d ~= nil then return d end
+	if not TM.freeze() then return lastDeath end
+	if TM.lastFreeze then return -4 end
+	for _, x in ipairs(S.model and S.model.deaths or {}) do if not x.placeholder then return lastDeath end end
+	return -4
+end
+function TM.deathLabel(d)
+	if d == nil or d == -4 then return "freeze" end
+	return deathWord(d)
+end
+function TM.winDeath(d)
+	if d == nil and TM.freeze() then return "freeze" end
+	return deathWord(d or 0)
+end
+local function askDeathValue(q, default)
+	return coroutine.yield({ death = default, text = q })
+end
+local function markWindow(q, lo, hi, others)
+	local msg = q
+	while true do
+		local wa, wb = coroutine.yield({ mark = msg })
+		if wa < lo or wb > hi then
+			msg = "inside " .. lo .. "-" .. hi .. " only: " .. q
+		else
+			local hit
+			for _, o in ipairs(others) do if wa <= o.b and wb >= o.a then hit = o end end
+			if hit then msg = "it would overlap the window " .. hit.a .. "-" .. hit.b .. ": " .. q
+			else return wa, wb end
+		end
+	end
+end
+local function askJump(q, ctx, prefix)
+	local l, out = {}, {}
+	local function add(label, fn) l[#l + 1] = label; out[#out + 1] = fn end
+	add("no jump: the movie goes on", function() return nil end)
+	if prefix == "timed" then add("skip: to the end of the TIMED", function() return "skip" end) end
+	add("connect later: a move to make (" .. peekName(ctx, prefix) .. ")", function() return newName(ctx, prefix) end)
+	for _, m in ipairs(movesAfter(ctx)) do add(moveLabel(m), function() return nameOf(ctx, m, prefix) end) end
+	local _, p = ask(q, l)
+	return out[p]()
+end
+local function windowLine(w, off)
+	local j = w.jump and ("> " .. w.jump) or ""
+	return (string.format("          %-8s %6d - %-6d  %-14s %s", w.dir, w.a - off, w.b - off, j, deathWord(w.death)):gsub("%s+$", ""))
+end
+local function parseWindow(l, off)
+	local text = isWaiting(l) and unwait(l) or l
+	local code = splitComment(text)
+	local w = words(code)
+	if not w[1] or not IS_INPUT[w[1].u] then return nil end
+	local s1, e1, a, b = code:find("(%-?%d+)%s*%-%s*(%-?%d+)")
+	if not s1 then return nil end
+	local rest = code:sub(e1 + 1)
+	local jump = rest:match(">%s*([%a_][%w_]*)")
+	rest = rest:gsub(">%s*[%a_][%w_]*", "")
+	return { dir = w[1].u, a = tonumber(a) + off, b = tonumber(b) + off, jump = jump, death = deathOf(words(rest)[1]) }
+end
+TM.parseWindow = parseWindow
+local function windowsOf(m)
+	local out = {}
+	for _, i in ipairs(m.sub) do
+		local w = parseWindow(S.lines[i], m.level.off)
+		if w then w.line = i; out[#out + 1] = w end
+	end
+	return out
+end
+TM.windowsOf = windowsOf
+local function oneWindow(ctx, n, lo, hi, wins, death)
+	local wa, wb = markWindow("TIMED window " .. n .. ": go to one end, B1, then to the other end, B1 (inside " .. lo .. "-" .. hi .. "; B3 cancels)", lo, hi, wins)
+	local dir = ask("TIMED window " .. n .. " " .. wa .. "-" .. wb .. ": its direction or button", INPUTS)
+	if not death then death = askDeathValue("TIMED window 1: its death (the next windows take it too)", TM.firstDeath(ctx.death)) end
+	local jump = askJump("TIMED window " .. n .. " " .. dir .. " " .. wa .. "-" .. wb .. ": its jump", ctx, "timed")
+	return { dir = dir, a = wa, b = wb, death = death, jump = jump }
+end
+BUILDERS.TIMED = function(a, b, lv, sc)
+	local ctx = choiceCtx(a, b, lv, sc)
+	ctx.death = askDeathValue("TIMED " .. a .. "-" .. b .. ": its death when nothing is pressed", TM.firstDeath(nil))
+	local wins = {}
+	while true do
+		wins[#wins + 1] = oneWindow(ctx, #wins + 1, a, b, wins, wins[1] and wins[1].death)
+		local v = ask("TIMED " .. a .. "-" .. b .. ": " .. #wins .. " window(s)", { "ADD A WINDOW", "DONE" }, 2)
+		if v == "DONE" then break end
+	end
+	local subs = {}
+	for _, w in ipairs(wins) do subs[#subs + 1] = windowLine(w, lv and lv.off or 0) end
+	return { text = "TIMED", subs = subs, names = ctx.names, death = ctx.death }
+end
+BUILDERS.WAY = function(a, b, lv, sc)
+	local ctx = choiceCtx(a, b, lv, sc)
+	local to = askJump("WAY: where it goes", ctx, "way")
+	return { text = to and ("WAY > " .. to) or "WAY", subs = {}, names = ctx.names }
+end
+function TM.addWindow(m)
+	return function()
+		local ctx = choiceCtx(m.a, m.b, m.level, m.scene)
+		local wins = windowsOf(m)
+		ctx.death = m.death
+		local w = oneWindow(ctx, #wins + 1, m.a, m.b, wins, wins[1] and wins[1].death)
+		local after = m.line
+		for _, x in ipairs(wins) do if x.a < w.a and x.line > after then after = x.line end end
+		return { insert = after, text = windowLine(w, m.level.off), names = ctx.names }
+	end
+end
+function TM.editWindow(m, i)
+	return function()
+		local ctx = choiceCtx(m.a, m.b, m.level, m.scene)
+		local wins = windowsOf(m)
+		local w, others = nil, {}
+		for _, x in ipairs(wins) do if x.line == i then w = x else others[#others + 1] = x end end
+		if not w then return { err = "this window cannot be read" } end
+		local names = {}
+		for _, x in ipairs(m.scene and m.scene.moves or {}) do if x.name and not x.waiting then names[x.name:lower()] = true end end
+		if w.jump and not names[w.jump:lower()] and w.jump:lower() ~= "skip" then ctx.reuse = w.jump:lower() end
+		local label = "WINDOW " .. w.dir .. " " .. w.a .. "-" .. w.b
+		local _, p = ask(label, { "FRAMES: " .. w.a .. "-" .. w.b, "DIRECTION: " .. w.dir, "DEATH: " .. TM.winDeath(w.death),
+			"JUMP: " .. (w.jump or "none"), "DELETE" })
+		if p == 1 then w.a, w.b = markWindow(label .. ": go to one end, B1, then to the other end, B1 (inside " .. m.a .. "-" .. m.b .. "; B3 cancels)", m.a, m.b, others)
+		elseif p == 2 then w.dir = ask(label .. ": its direction or button", INPUTS)
+		elseif p == 3 then w.death = askDeathValue(label .. ": its death", TM.firstDeath(w.death))
+		elseif p == 4 then w.jump = askJump(label .. ": its jump", ctx, "timed")
+		else
+			if #wins == 1 then return { err = "a TIMED keeps one window at least" } end
+			return { line = i, delete = true }
+		end
+		return { line = i, text = windowLine(w, m.level.off), names = ctx.names }
+	end
+end
+function TM.editWay(m)
+	return function()
+		local ctx = choiceCtx(m.a, m.b, m.level, m.scene)
+		local now = targetOf(S.lines[m.line])
+		local names = {}
+		for _, x in ipairs(m.scene and m.scene.moves or {}) do if x.name and not x.waiting then names[x.name:lower()] = true end end
+		if now and not names[now] then ctx.reuse = now end
+		return { way = askJump("WAY: where it goes", ctx, "way"), names = ctx.names }
+	end
+end
+local LEVEL_SETTINGS = { "replay", "mirror", "deathmirror", "image" }
+function TM.levelValue(lv, key)
+	local l = lv.introLine and S.lines[lv.introLine] or ""
+	local code = splitComment(isWaiting(l) and unwait(l) or l)
+	return tonumber(code:match("%f[%a]" .. key .. "%s+(%-?%d+)"))
+end
+local function replayWord(v)
+	if v == nil or v == -1 then return "again, as long as needed" end
+	if v == 0 then return "never: the next level" end
+	if v == 1 then return "once more at once, then the next level" end
+	if v > 1 then return "later, once: at stage " .. v end
+	return "later, each time: at stage " .. (-v)
+end
+TM.replayWord = replayWord
+function TM.levelActs(lv)
+	local acts = {}
+	local function v(k) return TM.levelValue(lv, k) end
+	acts[#acts + 1] = "REPLAY: " .. replayWord(v("replay"))
+	acts[#acts + 1] = "MIRROR: " .. (v("mirror") and tostring(v("mirror")) or "none")
+	acts[#acts + 1] = "DEATHMIRROR: " .. (v("deathmirror") and tostring(v("deathmirror")) or "none")
+	acts[#acts + 1] = "IMAGE: " .. (v("image") and tostring(v("image") + (S.model.relative and lv.off or 0)) or "none")
+	return acts
+end
+function TM.editLevel(lv, key)
+	return function()
+		local name = "LEVEL " .. tostring(lv.key)
+		if key == "replay" then
+			local _, p = ask(name .. ": after a death in this level", { "again, as long as needed (the usual)", "never: the next level",
+				"once more at once, then the next level", "later, once: at a stage to choose", "later, each time: at a stage to choose" })
+			if p <= 3 then return { lv = lv, key = key, value = ({ nil, 0, 1 })[p] } end
+			local n = 0
+			for _, x in ipairs(S.model.levels) do if type(x.key) == "number" then n = n + 1 end end
+			local l = {}
+			for k = 2, math.max(2, n) do l[#l + 1] = "stage " .. k end
+			local _, q = ask(name .. ": at which stage of the game it comes again", l)
+			return { lv = lv, key = key, value = (p == 4 and 1 or -1) * (q + 1) }
+		end
+		local _, p = ask(name .. ": " .. key, { "MARK IT", "NONE" })
+		if p == 2 then return { lv = lv, key = key, value = nil } end
+		if key == "mirror" then
+			local f = coroutine.yield({ mark = name .. " mirror: go to the mirrored first frame of its intro (" .. lv.ia .. "), B1 (B3 cancels)", one = true })
+			return { lv = lv, key = key, value = f - lv.ia }
+		elseif key == "deathmirror" then
+			local d = askDeath(name .. " deathmirror: a death to find in the mirror")
+			local n = tonumber(d:match("%d+"))
+			local da
+			for _, x in ipairs(S.model.deaths) do if x.n == n then da = x.a end end
+			if not da then return { err = "no death " .. n .. " in the sheet" } end
+			local f = coroutine.yield({ mark = name .. " deathmirror: go to the mirrored first frame of death " .. n .. " (" .. da .. "), B1 (B3 cancels)", one = true })
+			return { lv = lv, key = key, value = f - da }
+		else
+			local f = coroutine.yield({ mark = name .. " image: go to the frame shown in the level select, B1 (B3 cancels)", one = true })
+			return { lv = lv, key = key, value = f - (S.model.relative and lv.off or 0) }
+		end
+	end
+end
+function TM.setLevel(spec)
+	if spec.err then return spec.err end
+	local lv = spec.lv
+	if not lv.introLine then return "this level has no intro line" end
+	snapshot()
+	local l = S.lines[lv.introLine]
+	local waiting = isWaiting(l)
+	local code, comment = splitComment(waiting and unwait(l) or l)
+	local vals = {}
+	for _, k in ipairs(LEVEL_SETTINGS) do
+		vals[k] = TM.levelValue(lv, k)
+		code = code:gsub("%s*%f[%a]" .. k .. "%s+%-?%d+", "")
+	end
+	vals[spec.key] = spec.value
+	code = code:gsub("%s+$", "")
+	for _, k in ipairs(LEVEL_SETTINGS) do if vals[k] ~= nil then code = code .. "   " .. k .. " " .. vals[k] end end
+	local out = code .. (comment ~= "" and ("   " .. comment) or "")
+	S.lines[lv.introLine] = waiting and wait(out) or out
+	changed()
+end
+function TM.apply(m, spec)
+	if spec.err then return spec.err end
+	snapshot()
+	for _, n in ipairs(spec.names or {}) do setLineName(n.line, n.name) end
+	if spec.insert then
+		local out = spec.text
+		if isWaiting(S.lines[m.line]) then out = wait(out) end
+		table.insert(S.lines, spec.insert + 1, out)
+	elseif spec.delete then
+		table.remove(S.lines, spec.line)
+	elseif spec.line then
+		local l = S.lines[spec.line]
+		local _, comment = splitComment(isWaiting(l) and unwait(l) or l)
+		local out = spec.text .. (comment ~= "" and ("   " .. comment) or "")
+		S.lines[spec.line] = isWaiting(l) and wait(out) or out
+	elseif spec.way ~= nil or spec.names then
+		local l = S.lines[m.line]
+		local waiting = isWaiting(l)
+		local code, comment = splitComment(waiting and unwait(l) or l)
+		code = code:gsub("%s*>%s*[%a_][%w_]*", "", 1):gsub("%s+$", "")
+		local w = words(code)
+		local nm = m.name
+		if nm then code = code:sub(1, w[#w].i - 1):gsub("%s+$", "") end
+		code = code .. (spec.way and ("   > " .. spec.way) or "") .. (nm and ("   " .. nm) or "")
+		local out = code .. (comment ~= "" and ("   " .. comment) or "")
+		S.lines[m.line] = waiting and wait(out) or out
+	end
+	changed()
+end
+end
+
+-- a direction or a button: a second answer accepted (UP or B1), from EDIT
+local function orBuilder(kind)
+	return function()
+		local l = { "none: " .. kind .. " only" }
+		for _, i in ipairs(INPUTS) do if i ~= kind then l[#l + 1] = i end end
+		local v, p = ask(kind .. " or ...: a second answer accepted", l)
+		return p == 1 and kind or (kind .. " or " .. v)
+	end
+end
+
+-- the questions run as a coroutine: each answer chosen in the list goes on
+local building = nil		-- { co, finish }
+local markWin = nil
+local function buildStep(answer, pos)
+	local ok, q, choices, p = coroutine.resume(building.co, answer, pos)
+	if not ok then message = "error: " .. tostring(q); building = nil; return end
+	if coroutine.status(building.co) == "dead" then
+		local finish = building.finish
+		building = nil
+		mode = "browse"
+		finish(q)
+		return
+	end
+	if type(q) == "table" and q.mark then
+		mode = "browse"
+		markWin = { text = q.mark, one = q.one }
+		message = q.mark
+		return
+	end
+	if type(q) == "table" and q.death then
+		enterDeath(q.death, "builddeath")
+		message = q.text
+		return
+	end
+	openList(choices, p or 1, "build")
+	message = q
+end
+local function startBuild(builder, a, b, lv, sc, finish)
+	building = { co = coroutine.create(function() return builder(a, b, lv, sc) end), finish = finish }
+	buildStep()
+end
+
+-- --------------------------------------------------------------------------
+-- EDIT (v48): what can be changed in what is chosen, its present values in
+-- the names. One action, and the list closes.
+
+-- the second answer of a direction or a button (UP or B1), or nil
+local function orOf(m)
+	local w = m.words or {}
+	if w[2] and w[2].u == "OR" and w[3] then return w[3].s end
+end
+
+local function openEdit(it)
+	selected = it
+	local acts = {}
+	local one = it.kind == "menu" or (it.kind == "clip" and ONE_FRAME_CLIPS[it.name])
+	if it.kind == "move" then
+		local m = it.obj
+		acts[#acts + 1] = "MOVE: " .. (m.text or m.kind)
+		if m.death ~= nil or (TM.freeze() and not NO_DEATH[m.kind]) then acts[#acts + 1] = "DEATH: " .. TM.deathLabel(m.death) end
+		if IS_INPUT[m.kind] then acts[#acts + 1] = "OR: " .. (orOf(m) or "none") end
+		if m.kind == "TIMED" then
+			it.windowLines = {}
+			for _, w in ipairs(TM.windowsOf(m)) do
+				local label = "WINDOW " .. w.dir .. " " .. w.a .. "-" .. w.b .. (w.jump and (" > " .. w.jump) or "") .. " " .. TM.winDeath(w.death)
+				acts[#acts + 1] = label
+				it.windowLines[label] = w.line
+			end
+			acts[#acts + 1] = "ADD A WINDOW"
+		end
+		if m.kind == "WAY" then acts[#acts + 1] = "JUMP: " .. (targetOf(S.lines[m.line]) or "none") end
+		-- v54: each choice, and where it leads (to connect: no move has its name yet)
+		if CHOICE_KINDS[m.kind] then
+			it.choiceLines = {}
+			local names = {}
+			for _, x in ipairs(m.scene and m.scene.moves or {}) do if x.name and not x.waiting then names[x.name:lower()] = true end end
+			for _, i in ipairs(m.sub) do
+				local l = S.lines[i]
+				local text = isWaiting(l) and unwait(l) or l
+				local code = splitComment(text)
+				local first = (words(code)[1] or {}).s or ""
+				if arrow(text) and not (first:sub(-1) == ":" and first:sub(1, 1) ~= '"') then
+					local t = targetOf(l)
+					local label = trim(code):gsub("%s+", " ") .. ((t and not names[t]) and "  (to connect)" or "")
+					acts[#acts + 1] = label
+					it.choiceLines[label] = i
+				end
+			end
+		end
+	end
+	if it.kind ~= "scene" then acts[#acts + 1] = one and ("FRAME: " .. it.a) or ("FRAMES: " .. it.a .. "-" .. it.b) end
+	if it.kind == "scene" then
+		local lv = it.obj.level
+		if lv.scenes[#lv.scenes] ~= it.obj then acts[#acts + 1] = "JOIN NEXT SCENE" end
+	end
+	if it.kind == "move" or it.kind == "scene" then acts[#acts + 1] = "DELETE" end
+	if it.kind == "level" then
+		local lv = it.obj
+		if lv.ia then acts[#acts + 1] = "INTRO: " .. lv.ia .. "-" .. lv.ib end
+		for _, a in ipairs(TM.levelActs(lv)) do acts[#acts + 1] = a end
+		acts[#acts + 1] = "DELETE THE LEVEL"
+	end
+	if it.kind == "death" and it.obj.n == #S.model.deaths then acts[#acts + 1] = "DELETE" end
+	if it.kind == "clip" or (it.kind == "menu" and not TM.isDiff(it.name)) then acts[#acts + 1] = "DELETE" end
+	if it.kind == "menu" and TM.isDiff(it.name) then acts[#acts + 1] = "REMOVE DIFFICULTY SCREENS" end
+	openList(acts, 1, "edit")
+	TM.backTo(function() TM.openMenu(discGetFrame()) end)
+	message = "EDIT " .. it.text
+end
+TM.reEdit = openEdit
+
+-- what was changed, found again for the message
+local function changedText(kind, a, b, name, fallback)
+	reselect(kind, a, b, name)
+	local t = selected and selected.text or fallback
+	selected = nil
+	return t
+end
+
+-- the new frames of what EDIT holds
+local function applyFrames(it, a, b)
+	if it.kind == "move" then return editMove(it.obj, "frames", a, b)
+	elseif it.kind == "scene" then return editScene(it.obj, "frames", a, b)
+	elseif it.kind == "intro" then return editIntro(it.obj, a, b)
+	elseif it.kind == "level" then return TM.levelFrames(it.obj, a, b)
+	elseif it.kind == "introend" then return TM.introEnd(it.obj, a)
+	elseif it.kind == "death" then return editDeath(it.obj, "frames", a, b)
+	elseif it.kind == "clip" then return setClip(it.name, a, (not ONE_FRAME_CLIPS[it.name]) and b or nil)
+	elseif it.kind == "menu" then return setMenu(it.name, a) end
+end
+
+local function doEdit(act, f)
+	local it = selected
+	if act:match("^MOVE:") then openList(MOVE_TYPES, 1, "edittype"); TM.backTo(function() TM.reEdit(it) end); message = "EDIT " .. it.text .. ": its move?"; return end
+	if act:match("^DEATH:") then enterDeath(it.obj.death or (TM.freeze() and -4 or nil), "editdeath"); return end
+	if it.kind == "level" and (act:match("^REPLAY:") or act:match("^MIRROR:") or act:match("^DEATHMIRROR:") or act:match("^IMAGE:")) then
+		local lv = it.obj
+		startBuild(TM.editLevel(lv, act:match("^(%u+):"):lower()), it.a, it.b, lv, nil, function(spec)
+			local err = TM.setLevel(spec)
+			selected = nil
+			message = err or (lvName(lv) .. ": " .. act:match("^(%u+):"):lower() .. " " .. (spec.key == "replay" and TM.replayWord(spec.value) or tostring(spec.value or "none")))
+		end)
+		return
+	end
+	if (it.windowLines and it.windowLines[act]) or act == "ADD A WINDOW" or act:match("^JUMP:") then
+		local m = it.obj
+		local b = act == "ADD A WINDOW" and TM.addWindow(m) or act:match("^JUMP:") and TM.editWay(m) or TM.editWindow(m, it.windowLines[act])
+		startBuild(b, it.a, it.b, m.level, m.scene, function(spec)
+			local err = TM.apply(m, spec)
+			selected = nil
+			message = err or changedText("move", it.a, it.b, nil, "changed")
+		end)
+		return
+	end
+	if it.choiceLines and it.choiceLines[act] then
+		local m = it.obj
+		startBuild(choiceBuilder(m, it.choiceLines[act]), it.a, it.b, m.level, m.scene, function(spec)
+			setChoice(spec)
+			selected = nil
+			message = changedText("move", it.a, it.b, nil, "changed")
+		end)
+		return
+	end
+	if act:match("^OR:") then
+		local m = it.obj
+		startBuild(orBuilder(m.kind), it.a, it.b, m.level, m.scene, function(text)
+			local err = editMove(m, "kind", text, lastDeath)
+			selected = nil
+			message = err or changedText("move", it.a, it.b, nil, text)
+		end)
+		return
+	end
+	if act:match("^INTRO:") then
+		selected = nil
+		framesOf, framesFirst = { kind = "introend", obj = it.obj, text = lvName(it.obj) .. " intro" }, nil
+		message = "INTRO of " .. lvName(it.obj) .. ": go to its last frame, then B1 (B3 cancels)"
+		return
+	end
+	if act:match("^FRAME") then
+		-- marked again, like a new one: B1 at one end, then B1 at the other
+		selected = nil
+		framesOf, framesFirst = it, nil
+		if act:match("^FRAME:") then message = "FRAME of " .. it.text .. ": go to the new frame, then B1 (B3 cancels)"
+		else message = "FRAMES of " .. it.text .. ": go to one end, B1, then to the other end, B1 (B3 cancels)" end
+		return
+	end
+	if act == "JOIN NEXT SCENE" then
+		selected = nil
+		local err = joinScene(it.obj)
+		message = err or (it.text:match("^(LEVEL %S+)") .. ": scene joined with the next one (B3 undoes)")
+		return
+	end
+	if act == "REMOVE DIFFICULTY SCREENS" then
+		selected = nil
+		message = TM.dropMenus(TM.DIFF) or "difficulty screens removed (B3 undoes)"
+		return
+	end
+	if act == "DELETE THE LEVEL" then
+		local lv = it.obj
+		selected = nil
+		if not lastLevel(lv) then message = "only the last level can be deleted: the next ones would change number"; return end
+		local nm, ns = 0, #lv.scenes
+		for _, sc in ipairs(lv.scenes) do nm = nm + #sc.moves end
+		openList({ "yes: delete " .. lvName(lv) .. ", its " .. ns .. " scene(s) and " .. nm .. " move(s)" }, 0, "confirm")
+		TM.backTo(function() newMove = nil; TM.reEdit(it) end)
+		newMove = { confirm = function() return deleteLevel(lv) end, done = lvName(lv) .. " deleted (B3 undoes)" }
+		return
+	end
+	if act == "DELETE" then
+		selected = nil
+		if it.kind == "scene" and #it.obj.moves > 0 then
+			openList({ "yes: delete the scene and its " .. #it.obj.moves .. " move(s), its frames go to " .. TM.sceneHeir(it.obj) }, 0, "confirm")
+			TM.backTo(function() newMove = nil; TM.reEdit(it) end)
+			newMove = { confirm = function() return TM.deleteScene(it.obj) end, done = "scene deleted (B3 undoes)" }
+			return
+		end
+		local err, note
+		if it.kind == "move" then err = editMove(it.obj, "delete")
+		elseif it.kind == "scene" then err = TM.deleteScene(it.obj)
+		elseif it.kind == "death" then err = editDeath(it.obj, "delete")
+		elseif it.kind == "clip" then err, note = dropNamed("CLIPS", it.name)
+		elseif it.kind == "menu" then err, note = dropNamed("MENU FRAMES", it.name) end
+		message = err or (it.text .. (note and (": " .. note) or " deleted") .. " (B3 undoes)")
+	end
+end
+
+-- B1 at each end of what FRAMES marks again
+local function frameMark(f)
+	local it = framesOf
+	local one = it.kind == "menu" or it.kind == "introend" or (it.kind == "clip" and ONE_FRAME_CLIPS[it.name])
+	local a, b
+	if one then a, b = f, f
+	elseif framesFirst == nil then
+		framesFirst = f
+		message = "FRAMES of " .. it.text .. ": " .. f .. ", now the other end, then B1 (B3 cancels)"
+		return
+	else
+		a, b = framesFirst, f
+		if b < a then a, b = b, a end
+	end
+	local err = applyFrames(it, a, b)
+	if err then message = err .. ": B1 elsewhere, or B3 cancels"; return end
+	framesOf, framesFirst = nil, nil
+	if it.kind == "introend" then
+		local lv = TM.findLevel(it.obj.key)
+		message = lvName(lv) .. ": intro " .. lv.ia .. "-" .. lv.ib .. ", scene 1 from " .. (lv.ib + 1) .. " (B3 undoes)"
+		return
+	end
+	if it.kind == "level" then
+		local lv = TM.findLevel(it.obj.key)
+		message = lvName(lv) .. ": " .. lv.a .. "-" .. lv.b .. " (B3 undoes)"
+		return
+	end
+	message = changedText(it.kind, a, b, it.name, "changed")
+end
+
+local function finishMove()
+	local err = addMove(newMove.a, newMove.b, newMove.kind, newMove.death)
+	local kind = specText(newMove.kind)
+	message = err or ("move " .. newMove.a .. "-" .. newMove.b .. " " .. kind
+		.. (NO_DEATH[baseKind(kind)] and "" or (" " .. TM.deathLabel(newMove.death))))
+	-- still to connect: said so (v54)
+	local me = baseKind(kind) .. " " .. newMove.a .. "-" .. newMove.b .. " waits: "
+	if not err and S.warning and S.warning:sub(1, #me) == me then message = message .. ": " .. S.warning end
+	newMove = nil
+end
+
+-- what CREATE marks, once its two ends are there
+local function markRange(a, b)
+	local name = createTool
+	if name == "MOVE" then
+		newMove = { a = a, b = b }
+		openList(MOVE_TYPES, 1, "move")
+		message = "move " .. a .. "-" .. b .. ": its type?"
+	elseif name == "SCENE" then
+		message = addScene(a, b) or ("scene " .. a .. "-" .. b)
+	elseif name == "LEVEL" or name == "NEXT LEVEL" then
+		local err, key = addLevel(a, b)
+		message = err or ("LEVEL " .. key .. ": " .. a .. "-" .. b .. ", intro " .. a .. "-" .. (a + 1) .. ". Now its moves")
+	elseif name == "DEATH" then
+		local n, err = addDeath(a, b)
+		message = err or ("death " .. n .. ": " .. a .. "-" .. b)
+	elseif name == "CLIP" then
+		newMove = { a = a, b = b }
+		openList(CLIPS, 1, "clip")
+		message = "clip " .. a .. "-" .. b .. ": which one?"
+	end
+end
+
+-- CREATE ..., chosen in B1's menu at the frame where we are
+local function startCreate(name, f)
+	lastCreate = name
+	createTool = name
+	if name == "MENU FRAME" then
+		newMove = { a = f }
+		openList(TM.menuList(), 1, "menu")
+		message = "menu frame " .. f .. ": which one?"
+		return
+	end
+	pendingStart = f
+	-- the other end, before or after this one (v48)
+	message = "CREATE " .. name .. " at " .. f .. ": go to its other end, before or after, then B1 (B3 cancels)"
+end
+
+-- B1's menu (v48): only what can be done here. On a move: EDIT it (and what
+-- holds it). Elsewhere: CREATE what can start here, EDIT what is here.
+local menuActs = nil
+local function openMenu(f)
+	local labels, acts = {}, {}
+	local function add(label, fn) labels[#labels + 1] = label; acts[#acts + 1] = fn end
+	local function create(name) add("CREATE " .. name .. " HERE", function() startCreate(name, f) end) end
+	local its = itemsAt(f)
+	local onMove = false
+	for _, it in ipairs(its) do if it.kind == "move" then onMove = true; add("EDIT " .. it.text, function() openEdit(it) end) end end
+	local lv = levelAt(f)
+	-- on the first frame of a scene, where SPLIT cannot go: the boundary
+	-- with the scene before can go (v51), a move starting here or not
+	local function joinHere()
+		local sc = lv and sceneAt(lv, f)
+		if not sc or f ~= sc.a then return end
+		local prev
+		for n, x in ipairs(lv.scenes) do if x == sc then prev = lv.scenes[n - 1] end end
+		if not prev then return end
+		add("JOIN SCENES HERE", function()
+			local err = joinScene(prev)
+			message = err or (lvName(lv) .. ": scene " .. prev.a .. "-" .. sc.b .. ", one scene again (B3 undoes)")
+		end)
+	end
+	if onMove then joinHere() end
+	if not onMove then
+		if not moveProblem(f, f) then create("MOVE") end
+		if lv then
+			-- v49: a level is born with its scene, then the scenes are split
+			local sc = sceneAt(lv, f)
+			joinHere()
+			if sc and f > sc.a then
+				add("SPLIT SCENE HERE", function()
+					local err = splitScene(f)
+					message = err or (lvName(lv) .. ": scenes " .. sc.a .. "-" .. (f - 1) .. " and " .. f .. "-" .. sc.b .. " (B3 undoes)")
+				end)
+			end
+			if not introEndsProblem(f) then
+				add("INTRO ENDS HERE", function()
+					local ia = lv.ia
+					local err = introEndsHere(f)
+					message = err or (lvName(lv) .. ": intro " .. ia .. "-" .. (f - 1) .. ", scene 1 from " .. f .. " (B3 undoes)")
+				end)
+			end
+		else
+			create("LEVEL")
+		end
+		local lf, last = TM.nextFrames()
+		if lf then add("CREATE NEXT LEVEL", function() TM.startNext("NEXT LEVEL", lf, last) end) end
+		if last then add("NEXT LEVEL GAP: " .. TM.gap, TM.askGap) end
+	end
+	for _, it in ipairs(its) do
+		if it.kind ~= "move" and it.kind ~= "intro" and not (it.kind == "scene" and #it.obj.level.scenes == 1) then add("EDIT " .. it.text, function() openEdit(it) end) end
+	end
+	create("DEATH"); create("CLIP"); create("MENU FRAME")
+	add("AUTO", TM.askAuto)
+	if not onMove and TM.sheets and #TM.sheets > 1 then add("OPEN ANOTHER SHEET", TM.askSheet) end
+	add("GAME SETTINGS", TM.askGroups)
+	local pos = 1
+	if not onMove then for i, l in ipairs(labels) do if (l .. " "):sub(1, #lastCreate + 8) == "CREATE " .. lastCreate .. " " then pos = i end end end
+	menuActs = acts
+	openList(labels, pos, "menu1")
+	message = "B1: what here?"
+end
+TM.openMenu = openMenu
+
+-- B1: the other end of what CREATE or FRAMES marks, or else the menu
+local function pressB1(f)
+	if TM.auto then TM.autoMark(f); return end
+	if TM.mf then TM.menuMark(f); return end
+	if TM.diff then TM.diffMark(f); return end
+	if markWin and building and markWin.one then
+		markWin = nil
+		buildStep(f)
+		return
+	end
+	if markWin and building then
+		if markWin.first == nil then
+			markWin.first = f
+			message = f .. ", now the other end, B1 (B3 cancels)"
+			return
+		end
+		local a, b = markWin.first, f
+		if b < a then a, b = b, a end
+		markWin = nil
+		buildStep(a, b)
+		return
+	end
+	markWin = nil
+	if pendingStart ~= nil then
+		local a, b = pendingStart, f
+		if b < a then a, b = b, a end
+		if createTool == "MOVE" then
+			-- refused before its type is asked: the first frame stays marked
+			local err = moveProblem(a, b)
+			if err then message = err .. ": B1 elsewhere, or B3 cancels"; return end
+		end
+		local nerr = TM.nextProblem(f)
+		if nerr then message = nerr .. ": B1 elsewhere, or B3 cancels"; return end
+		pendingStart = nil
+		markRange(a, b)
+		return
+	end
+	if framesOf then frameMark(f); return end
+	openMenu(f)
+end
+
+-- QUIT (ESC, or START + SELECT on a pad), after a yes (v48, v50)
+local function askQuit()
+	openList({ "QUIT: yes (the sheet is already saved)" }, 0, "quit")
+	message = "QUIT?"
+end
+
+-- a list closed without a choice: EXIT MENU, B3, START, ESC (and B4 for
+-- GO TO)
+local function closeList(why)
+	TM.listBack = nil
+	mode = "browse"
+	newMove, building, selected, markWin = nil, nil, nil, nil
+	message = why or "B1: menu"
+end
+
+local function chooseInList(f)
+	local v, i = list[listPos], listPos - 1		-- i: its place without EXIT MENU
+	if i == 0 and TM.listBack then TM.goBack(); return end
+	if i == 0 and listWhat == "diff" then TM.diff = nil; closeList("difficulty screens: nothing written"); return end
+	if i == 0 and listWhat == "auto" then TM.auto = nil; closeList("AUTO CREATE: nothing created"); return end
+	if i == 0 then closeList(); return end
+	mode = "browse"
+	if listWhat == "build" then
+		buildStep(v, i)
+	elseif listWhat == "menu1" then
+		local fn = menuActs and menuActs[i]
+		menuActs = nil
+		if fn then fn() end
+	elseif listWhat == "move" then
+		local function deathNext(text)
+			newMove.kind = text
+			if type(text) == "table" and text.death then newMove.death = text.death; finishMove()
+			elseif NO_DEATH[v] then newMove.death = nil; finishMove()
+			else
+				enterDeath(nil, "move")
+				message = "move " .. newMove.a .. "-" .. newMove.b .. " " .. specText(text) .. ": its death?"
+			end
+		end
+		if BUILDERS[v] then
+			local lv = levelAt(newMove.a)
+			startBuild(BUILDERS[v], newMove.a, newMove.b, lv, lv and sceneAt(lv, newMove.a), deathNext)
+		else
+			deathNext(v)
+		end
+	elseif listWhat == "clip" then
+		local err = ONE_FRAME_CLIPS[v] and setClip(v, newMove.a) or setClip(v, newMove.a, newMove.b)
+		message = err or ("clip " .. v .. ": " .. newMove.a .. (ONE_FRAME_CLIPS[v] and "" or (" - " .. newMove.b)))
+		newMove = nil
+	elseif listWhat == "menu" then
+		if v == "DIFFICULTY SCREENS" then TM.diffStart(newMove.a)
+		else message = setMenu(v, newMove.a) or ("menu frame " .. v .. ": " .. newMove.a) end
+		newMove = nil
+	elseif listWhat == "gsgroup" then
+		if TM.GS[i] then TM.gsPos = nil; TM.askGroup(i) else TM.gsGroup = i; TM.askReset() end
+	elseif listWhat == "gsreset" then
+		TM.askGroups(TM.gsResetAll())
+	elseif listWhat == "gsset" then
+		TM.pickSetting(i)
+	elseif listWhat == "gstrophy" then
+		TM.setTrophy(i)
+	elseif listWhat == "sheet" then
+		TM.openSheet(v)
+	elseif listWhat == "gap" then
+		TM.gap = i
+		saveCfg()
+		message = "NEXT LEVEL GAP: " .. TM.gap .. (TM.gap == 1 and " frame" or " frames") .. ", kept for next time"
+	elseif listWhat == "auto" then
+		TM.autoPick(i)
+	elseif listWhat == "autosub" then
+		TM.autoPos = i
+		if i == 1 then TM.autoStart("LEVELS") elseif i == 2 then TM.autoStart("DEATHS") else TM.menuStart() end
+	elseif listWhat == "diff" then
+		if i == 1 then
+			TM.diff.ask, TM.diff.n = nil, 4
+			message = "DIFFICULTY SCREENS: Extreme: go to its picture, B1 (B3 cancels)"
+		else
+			TM.diffWrite()
+		end
+	elseif listWhat == "edit" then
+		doEdit(v, f)
+	elseif listWhat == "confirm" then
+		local c = newMove
+		newMove = nil
+		if not c then message = "nothing deleted"; return end
+		local err = c.confirm()
+		message = err or c.done
+	elseif listWhat == "quit" then
+		if singeQuit ~= nil then singeQuit() elseif dirkQuit ~= nil then dirkQuit() end
+	elseif listWhat == "edittype" then
+		local it = selected
+		local function apply(text)
+			local err = editMove(it.obj, "kind", text, lastDeath)
+			selected = nil
+			message = err or changedText("move", it.a, it.b, nil, specText(text))
+		end
+		if BUILDERS[v] then
+			local m = it.obj
+			startBuild(BUILDERS[v], it.a, it.b, m.level, m.scene or sceneAt(m.level, it.a), apply)
+		else
+			apply(v)
+		end
+	elseif listWhat == "goto" then
+		gotoKind(GOTO_KINDS[i], f)
+	elseif listWhat == "gotoitem" then
+		goTo(gotoItems[i])
+		message = v
+	end
+end
+
+-- --------------------------------------------------------------------------
+-- Dirk's calls
+
+local OW, OH = 640, 480
+
+-- text with a dark outline, readable on any picture of the movie
+local function say(x, y, text, r, g, b)
+	local o = TXT.o or 1
+	colorForeground(0, 0, 0)
+	fontPrint(x - o, y, text); fontPrint(x + o, y, text)
+	fontPrint(x, y - o, text); fontPrint(x, y + o, text)
+	colorForeground(r, g, b)
+	fontPrint(x, y, text)
+end
+
+function TXT.use()
+	local n = TXT.n
+	font, fontSmall = TXT.fonts[n][1], TXT.fonts[n][2]
+	TXT.LB = math.floor(TXT.BIG[n] * TXT.s * 22 / 18 + 0.5)
+	TXT.LS = math.floor(TXT.SMALL[n] * TXT.s * 16 / 14 + 0.5)
+	TXT.k = TXT.SMALL[n] * TXT.s / 14
+end
+
+function TXT.P(v)
+	return math.floor(v * TXT.s + 0.5)
+end
+
+function TXT.load(face)
+	TXT.o = math.max(1, TXT.P(1))
+	for i = 1, #TXT.BIG do TXT.fonts[i] = { fontLoad(face, TXT.P(TXT.BIG[i])), fontLoad(face, TXT.P(TXT.SMALL[i])) } end
+	TXT.use()
+end
+
+function TXT.sel(f)
+	TXT.cur = f
+	fontSelect(f)
+end
+
+function TXT.width(t)
+	if t == "" then return 0 end
+	local key = tostring(TXT.cur) .. "\1" .. t
+	local w = TXT.w[key]
+	if w then return w end
+	if TXT.wn > 400 then TXT.w, TXT.wn = {}, 0 end
+	w = #t * TXT.SMALL[TXT.n] * TXT.s * 0.6
+	if fontToSprite ~= nil and spriteGetWidth ~= nil then
+		local ok, h = pcall(fontToSprite, t)
+		if ok and h then
+			w = spriteGetWidth(h) or w
+			if spriteUnload ~= nil then spriteUnload(h) end
+		end
+	end
+	TXT.w[key] = w
+	TXT.wn = TXT.wn + 1
+	return w
+end
+
+function TXT.wrap(t, maxw)
+	if TXT.width(t) <= maxw then return { t } end
+	local pieces = {}
+	for piece in (t .. "  "):gmatch("(.-)  +") do
+		if piece == "|" and #pieces > 0 then pieces[#pieces] = pieces[#pieces] .. "  |"
+		elseif piece ~= "" then pieces[#pieces + 1] = piece end
+	end
+	local lines, line = {}, ""
+	local function add(piece, sep)
+		local try = line == "" and piece or (line .. sep .. piece)
+		if line ~= "" and TXT.width(try) > maxw then
+			lines[#lines + 1] = line
+			line = piece
+		else
+			line = try
+		end
+	end
+	for _, piece in ipairs(pieces) do
+		if TXT.width(piece) > maxw then
+			for word in piece:gmatch("%S+") do add(word, " ") end
+		else
+			add(piece, "  ")
+		end
+	end
+	if line ~= "" then lines[#lines + 1] = line end
+	for i, x in ipairs(lines) do lines[i] = x:gsub("%s*|$", "") end
+	if #lines == 0 then lines[1] = "" end
+	return lines
+end
+
+function TXT.say(x, y, maxw, t, lh, r, g, b)
+	for _, line in ipairs(TXT.wrap(t, maxw)) do
+		say(x, y, line, r, g, b)
+		y = y + lh
+	end
+	return y
+end
+
+function TXT.sayParts(x, y, maxw, parts, lh)
+	local sep = "  |  "
+	local sw = TXT.width(sep)
+	local cx = x
+	for i, p in ipairs(parts) do
+		local w = TXT.width(p.t)
+		if i > 1 then
+			if cx - x + sw + w > maxw then
+				y = y + lh
+				cx = x
+			else
+				say(cx, y, sep, 255, 255, 255)
+				cx = cx + sw
+			end
+		end
+		if w > maxw then
+			if cx > x then y = y + lh; cx = x end
+			local lines = TXT.wrap(p.t, maxw)
+			for j, l in ipairs(lines) do
+				say(x, y, l, p.r, p.g, p.b)
+				if j < #lines then y = y + lh end
+			end
+			cx = x + TXT.width(lines[#lines])
+		else
+			say(cx, y, p.t, p.r, p.g, p.b)
+			cx = cx + w
+		end
+	end
+	return y + lh
+end
+
+function TXT.next()
+	TXT.n = TXT.n % #TXT.BIG + 1
+	TXT.use()
+	saveCfg()
+	message = "text size: " .. TXT.NAMES[TXT.n]
+end
+
+-- --------------------------------------------------------------------------
+-- B2: while the movie plays, the moves are shown as in the game (v43): the
+-- arrows, buttons and icons of the DEFAULT skin, at the frames of each move,
+-- with the move written under them. Nothing is pressed and nobody dies: it
+-- is only to see that each move comes at the right moment. (v37 showed them
+-- already, but the movie was played too fast then, see v40: v39 kept only
+-- the name.)
+
+local SKIN = "./KimmyScript/Skin/DEFAULT/Overlay/Lores/"
+local sprites = {}
+local function spr(name)
+	if sprites[name] == nil then
+		local ok, h = pcall(spriteLoad, SKIN .. name .. ".png")
+		sprites[name] = (ok and h) or false
+	end
+	return sprites[name] or nil
+end
+local function draw(name, x, y, centered)
+	local h = spr(name)
+	if not h then return end
+	if centered then
+		local w, hh = spriteGetWidth(h) or 0, spriteGetHeight(h) or 0
+		x, y = x - w / 2, y - hh / 2
+	end
+	spriteDraw(math.floor(x), math.floor(y), h)
+end
+
+local ARROW = { UP = "arrowup", DOWN = "arrowdown", LEFT = "arrowleft", RIGHT = "arrowright",
+	UPLEFT = "arrowul", UPRIGHT = "arrowur", DOWNLEFT = "arrowdl", DOWNRIGHT = "arrowdr",
+	U = "arrowup", D = "arrowdown", L = "arrowleft", R = "arrowright", UL = "arrowul", UR = "arrowur",
+	DL = "arrowdl", DR = "arrowdr", B1 = "action", B2 = "action2", B3 = "action3",
+	BUTTON1 = "action", BUTTON2 = "action2", BUTTON3 = "action3" }
+local HOLDS = { UP = "hup", DOWN = "hdown", LEFT = "hleft", RIGHT = "hright", B1 = "hold", BUTTON1 = "hold" }
+
+-- an input where the game puts it: arrows slide from the middle towards the
+-- edge (one step each tenth of a second, as in moves.kimmy), buttons in the middle
+local function input(word, steps)
+	local LH, LW = OH / 80, OW / 80
+	local name = ARROW[word]
+	if not name then return end
+	local h = spr(name)
+	if not h then return end
+	local w, hh = spriteGetWidth(h) or 0, spriteGetHeight(h) or 0
+	local k = math.min(steps, 20)
+	local x, y = OW / 2 - w / 2, OH / 2 - hh / 2
+	local up = word == "UP" or word == "U"
+	local down = word == "DOWN" or word == "D"
+	local left = word == "LEFT" or word == "L" or word == "UPLEFT" or word == "UL" or word == "DOWNLEFT" or word == "DL"
+	local right = word == "RIGHT" or word == "R" or word == "UPRIGHT" or word == "UR" or word == "DOWNRIGHT" or word == "DR"
+	if up then y = LH * 28 - k * LH
+	elseif down then y = OH - hh - LH * 28 + k * LH end
+	if left then x = LW * 32 - k * LW elseif right then x = OW - w - LW * 32 + k * LW end
+	if word == "UPLEFT" or word == "UL" or word == "UPRIGHT" or word == "UR" then y = OH / 2 - hh / 2 - k * LH end
+	if word == "DOWNLEFT" or word == "DL" or word == "DOWNRIGHT" or word == "DR" then y = OH / 2 - hh / 2 + k * LH end
+	spriteDraw(math.floor(x), math.floor(y), h)
+end
+
+local function previewMove(m, f, rate)
+	local secs = (f - m.a) / rate
+	local steps = math.floor(secs * 10)
+	local blink = steps % 2 == 0
+	local kind = m.kind
+	local w = {}
+	for _, x in ipairs(m.words or {}) do w[#w + 1] = x.u end
+	if m.death == -3 then return end			-- hidden: the game shows nothing
+	local CX, CY = OW / 2, OH / 2
+	local p = (m.b > m.a) and (f - m.a) / (m.b - m.a + 1) or 0
+	if ARROW[kind] then
+		if kind:match("^B") then draw(ARROW[kind], CX, CY, true) elseif blink then input(kind, steps) end
+		if w[2] == "OR" and w[3] and blink then input(w[3], steps) end
+	elseif kind:match("^ACT") then
+		draw("action", CX, CY, true)
+		if blink then input(kind:sub(4), steps) end
+	elseif kind == "COMBO" then
+		for k = 2, #w do if ARROW[w[k]] and (w[k]:match("^B") or blink) then input(w[k], steps) end end
+	elseif kind == "HOLD" or kind:match("^HOLD") then
+		local d = kind == "HOLD" and w[2] or kind:sub(5)
+		if d == "BUT" then d = "B1" end
+		draw(HOLDS[d] or "hold", CX, CY, true)
+	elseif kind == "LETGO" then
+		draw("shoot", CX, CY, true)
+	elseif kind == "ANYTHING" then
+		if blink then draw("anything", CX, CY, true) end
+	elseif kind == "NOTHING" then
+		if w[2] ~= "BLIND" and blink then draw("nothing", CX, CY, true) end
+	elseif kind == "MASH" or kind == "MASH2" or kind == "RUN" or kind:match("^MASH") or kind:match("^RUN") then
+		local how = w[2]
+		if kind:match("^MASH2") then how = "B1B2" elseif kind:match("^RUN") then how = "LR" end
+		if how == "B1B2" then draw(blink and "action" or "action2", CX, CY - OH / 80, true)
+		elseif how == "LR" or how == "RL" then input(blink and "LEFT" or "RIGHT", 20)
+		elseif how == "UD" or how == "DU" then input(blink and "UP" or "DOWN", 20)
+		elseif how == "B2" then draw(blink and "mash2" or "action2", CX, CY - OH / 80, true)
+		elseif how == "B3" then draw(blink and "mash3" or "action3", CX, CY - OH / 80, true)
+		elseif how and ARROW[how] and not how:match("^B") then if blink then input(how, steps) end
+		else draw(blink and "mash" or "action", CX, CY - OH / 80, true) end
+	elseif kind == "MULTI" or kind == "DOUBLE" or kind == "UD" or kind == "DU" or kind == "LR" or kind == "RL" then
+		-- the inputs one after the other along the window
+		local seq = {}
+		if kind == "DOUBLE" then seq = { "B1", "B1" }
+		elseif kind ~= "MULTI" then seq = { kind:sub(1, 1), kind:sub(2, 2) }
+		elseif w[2] and w[2]:match('^"') then for x in w[2]:gmatch("[^\",]+") do seq[#seq + 1] = x end
+		elseif w[2] and (w[3] or ""):match("^X%d+$") then
+			for _ = 1, tonumber(w[3]:sub(2)) do seq[#seq + 1] = w[2] end
+		elseif w[2] then
+			local stop = false
+			for k = 2, #w do
+				for x in w[k]:gmatch("[^,]+") do
+					if ARROW[x] and not stop then seq[#seq + 1] = x else stop = true end
+				end
+				if stop then break end
+			end
+		end
+		local i = math.min(#seq, math.floor(p * #seq) + 1)
+		if seq[i] then
+			if seq[i]:match("^B") then draw(ARROW[seq[i]], CX, CY, true) else input(seq[i], 20) end
+		end
+	elseif kind == "LOOP" or kind == "LOOPLEFT" or kind == "LOOPRIGHT" then
+		local spec = kind == "LOOPLEFT" and "L,+,1" or kind == "LOOPRIGHT" and "R,-,1" or (w[2] or ""):gsub('"', "")
+		if w[3] == "CW" or w[3] == "CCW" then spec = (w[2] or ""):sub(1, 1) .. "," .. (w[3] == "CW" and "+" or "-") .. "," .. (w[4] or "1")
+		elseif w[4] == "CW" or w[4] == "CCW" then spec = (w[2] or ""):sub(1, 1) .. "," .. (w[4] == "CW" and "+" or "-") .. "," .. (w[3] or "1") end
+		local st, dir, turns = spec:match("^(%a),([%+%-]),(%w)")
+		if st then
+			local t = (turns == "H" and "h") or (turns == "Q" and "q") or ""
+			draw("loop" .. st:lower() .. t .. (dir == "+" and "c" or "cc"), CX, CY, true)
+		end
+	elseif kind == "PATH" or kind == "YESNO" then
+		-- the choices written under it
+		for _, i in ipairs(m.sub or {}) do
+			local d = (S.lines[i]:match("^%s*(%u+%d?)%s*>") or "")
+			if ARROW[d] and blink then input(d, 20) end
+		end
+		if kind == "YESNO" and blink then draw("action", CX, CY, true) end
+	elseif kind == "TIMED" then
+		for _, i in ipairs(m.sub or {}) do
+			local d, a, b = S.lines[i]:match("^%s*(%u+%d?)%s+(%d+)%s*%-%s*(%d+)")
+			if d and f >= tonumber(a) + m.level.off and f <= tonumber(b) + m.level.off then
+				if d:match("^B") then draw(ARROW[d], CX, CY, true) else input(d, 20) end
+			end
+		end
+	end
+end
+
+local function preview(f)
+	local M = S.model
+	if not M then return end
+	local rate = fps or M.fps or 23.976
+	for _, lv in ipairs(M.levels) do
+		if f >= lv.a and f <= lv.b then
+			for _, sc in ipairs(lv.scenes) do
+				for _, m in ipairs(sc.moves) do
+					if f >= m.a and f <= m.b then
+						previewMove(m, f, rate)
+						local t = (m.text or m.kind) .. (m.death and ("  " .. deathWord(m.death)) or "")
+						say(math.floor(OW / 2 - TXT.width(t) / 2), OH - math.floor(70 * TXT.s * TXT.BIG[TXT.n] / 18), t, 255, 255, 0)
+					end
+				end
+			end
+		end
+	end
+end
+
+TM.game = { upd = onOverlayUpdate, press = onInputPressed, rel = onInputReleased }
+
+function TM.liveFind(f)
+	local w = RelativeFrames and 1 or 0
+	local best = nil
+	for k, L in pairs(Level) do
+		if type(L) == "table" and L[TOTALSCENES] then
+			for s = 1, L[TOTALSCENES] do
+				move = {}; path = {}; choice = {}
+				kimmySetupMoves(k, s)
+				local a = sceneStart + w * L[INTROCLIP]
+				local b = sceneEnd + w * L[INTROCLIP]
+				if f >= a and f <= b then return k, s end
+				if a > f and f >= L[INTROCLIP] and (best == nil or a < best.a) then best = { k = k, s = s, a = a } end
+			end
+		end
+	end
+	if best then return best.k, best.s end
+end
+
+function TM.liveStart(f)
+	if TM.game.upd == nil or not S.path or S.error then return false end
+	TM.keep = { MovieFPS, RelativeFrames }
+	local ok, err = pcall(function()
+		Level = {}
+		kimmyWatchLevels()
+		Death = {}
+		Tiers = {}
+		PlayOrder = {}
+		finalstage = nil
+		totalDeath = nil
+		AllowSecret = nil
+		FreezeDeath = true
+		local fn, e = load_(table.concat(S.lines, "\n"), "@" .. (S.path:match("([^/\\]+)$") or "sheet"))
+		if not fn then error(e, 0) end
+		fn()
+		local checkGame = kimmyCheckGame
+		kimmyCheckGame = function() end
+		local okLv, errLv = pcall(kimmyCheckLevels)
+		kimmyCheckGame = checkGame
+		if not okLv then error(errLv, 0) end
+		local k, sc = TM.liveFind(f)
+		if not k then error("no scene with moves here", 0) end
+		if not TM.ready then
+			pcall(readConfig)
+			getRes()
+			TM.ready = true
+		else
+			overlaySetResolution(OVLW, OVLH)
+		end
+		dip_GameType = 2
+		iPenal = ({ [0] = 0, [1] = PenalNormal, [2] = PenalHard, [3] = PenalExtreme })[dip_Difficulty or 1] or 0
+		i2P = 0
+		iLives = 5
+		iContinues = 0
+		bExtendedPlay = false
+		bPause = false
+		initStages()
+		Level[k][MIRROR] = 0
+		gameflow = flow_GameRunning
+		currentLevel = levelNormal
+		iLevel = k
+		iScene = sc - 1
+		currentMove = 1
+		lvlState = lvlSetup
+		bSave = false
+		bRes = false
+		bSkipIntroClip = true
+		bShowCredits = false
+		bShowLCD = false
+		bShowSkip = false
+		bShowDisk1, bShowDisk2, bShowDisk3, bShowDiskA = false, false, false, false
+		bShowChoices = false
+		TM.liveFrom = f
+		TM.liveFix = true
+	end)
+	if not ok then
+		MovieFPS, RelativeFrames = TM.keep[1], TM.keep[2]
+		message = "B4: " .. tostring(err)
+		return false
+	end
+	TM.live = true
+	return true
+end
+
+function TM.liveStop(why)
+	TM.live = false
+	TM.stopAsked = false
+	discPause()
+	playing = false
+	MovieFPS, RelativeFrames = TM.keep[1], TM.keep[2]
+	overlaySetResolution(OW, OH)
+	message = why or ("stopped at " .. discGetFrame())
+end
+
+function TM.liveTick()
+	if TM.stopAsked then TM.liveStop() return 1 end
+	local ok, r = pcall(TM.game.upd)
+	if not ok then TM.liveStop("B4 stopped: " .. tostring(r)) return 1 end
+	if TM.liveFix and lvlState == lvlRunning then
+		TM.liveFix = false
+		local f = TM.liveFrom
+		if f > sceneStart then
+			local k = 1
+			while move[k + 1] and move[k][moveFrmEnd] < f do k = k + 1 end
+			currentMove = k
+			resetArrows()
+			if f > move[k][inputFrmEnd] then lvlState = lvlPlayRest end
+			discSkipToFrame(f)
+		end
+	end
+	if gameflow ~= flow_GameRunning or currentLevel ~= levelNormal then TM.liveStop("end of the level, stopped at " .. discGetFrame()) end
+	return r or 1
+end
+
+function onOverlayUpdate()
+	if not started then
+		started = true
+		-- the overlay takes the shape of the movie, so the text is not stretched
+		local bw, bh = nil, nil
+		if overlayBaseSize ~= nil then
+			local okB, w, h = pcall(overlayBaseSize)
+			if okB and w and h and w > 0 and h > 0 then bw, bh = math.floor(w + 0.5), math.floor(h + 0.5) end
+		end
+		if bw then
+			OW, OH = bw, bh
+			TXT.s = OH / 480
+		elseif vldpGetWidth ~= nil and vldpGetHeight ~= nil then
+			local vw, vh = vldpGetWidth(), vldpGetHeight()
+			if vw and vh and vw > 0 and vh > 0 then OW = math.floor(OH * vw / vh + 0.5) end
+		end
+		overlaySetResolution(OW, OH)
+		-- Dirk's own font (its loading screen, its joystick wizard), when it is
+		-- there (v52); KimmyScript's otherwise (Hypseus...)
+		local face = "./KimmyScript/Skin/DEFAULT/fontul.ttf"
+		if exists("./KimmyScript/Cfg/dirk_loading_font.ttf") then face = "./KimmyScript/Cfg/dirk_loading_font.ttf" end
+		TXT.load(face)
+		readIndex()
+		TM.self = dirkGetScriptPath ~= nil and (tostring(dirkGetScriptPath()):match("([^/\\]+)$") or ""):lower() or ""
+		open()
+		TM.logoStart(OH)
+		message = openMessage or message
+		-- the speed of the movie, as the game sets it (main.kimmy, initVLDP):
+		-- without it Dirk plays at 29.97 and the sound comes in blocks (v40)
+		local rate = fps or (S.model and S.model.fps)
+		if rate and discSetFPS ~= nil then discSetFPS(rate) end
+		discPlay()
+		goTo(0)
+		print("KimmyScript wizard: " .. tostring(S.path) .. (S.error and ("  [" .. S.error .. "]") or ""))
+	end
+	-- holding LEFT / RIGHT repeats the step
+	if held ~= nil and not playing then
+		heldTicks = heldTicks + 1
+		local again = heldTicks > 15
+		if mode == "browse" then
+			if (held == SW_LEFT or held == SW_RIGHT) and again and heldTicks % 2 == 0 then step(held == SW_RIGHT and 1 or -1)
+			elseif (held == SW_PREV or held == SW_NEXT) and again and heldTicks % 6 == 0 then
+				navJump(held == SW_NEXT and 1 or -1, discGetFrame())
+			end
+		elseif mode == "list" and again then
+			-- the lists scroll while the stick is held (v44)
+			if held == SW_UP and heldTicks % 2 == 0 then listPos = math.max(1, listPos - 1)
+			elseif held == SW_DOWN and heldTicks % 2 == 0 then listPos = math.min(#list, listPos + 1)
+			elseif held == SW_LEFT and heldTicks % 6 == 0 then listPos = math.max(1, listPos - 10)
+			elseif held == SW_RIGHT and heldTicks % 6 == 0 then listPos = math.min(#list, listPos + 10) end
+		elseif mode == "gset" and again then
+			if heldTicks % 3 == 0 then TM.gsStep(held) end
+		elseif mode == "death" and again then
+			if held == SW_UP and heldTicks % 4 == 0 then deathValue = math.min(TM.deathMax(), deathValue + 1); showDeath()
+			elseif held == SW_DOWN and heldTicks % 4 == 0 then deathValue = math.max(TM.deathMin(), deathValue - 1); showDeath()
+			elseif held == SW_RIGHT and heldTicks % 8 == 0 then deathValue = math.min(TM.deathMax(), deathValue + 10); showDeath()
+			elseif held == SW_LEFT and heldTicks % 8 == 0 then deathValue = math.max(TM.deathMin(), deathValue - 10); showDeath() end
+		end
+	end
+	if togglePlay then
+		togglePlay = false
+		if playing then discPause(); playing = false
+		elseif mode == "browse" and not pendingStart and not framesOf and not (markWin and building) and TM.liveStart(discGetFrame()) then
+			discPlay(); playing = true
+		else discPlay(); playing = true end
+	end
+	if TM.live then return TM.liveTick() end
+	if TM.auto and TM.auto.scanning then TM.autoPoll() end
+	overlayClear()
+	if TM.logo and TM.logoDraw(OW, OH) then return 1 end
+	local f = discGetFrame()
+	if playing and mode == "browse" and not pendingStart then
+		-- only the moves while it plays (v38): the rest of the screen is
+		-- not needed then
+		TXT.sel(font)
+		preview(f)
+		return 1
+	end
+	local LB, LS, P = TXT.LB, TXT.LS, TXT.P
+	local X, maxw = P(8), OW - P(16)
+	TXT.sel(font)
+	local y = TXT.say(X, P(6), maxw, "FRAME " .. f .. (length and (" / " .. (length - 1)) or "") .. "  step " .. STEPS[stepIndex] .. (playing and "  PLAY" or "  PAUSE"), LB, 255, 255, 0)
+	local doing
+	if markWin and building then doing = (markWin.one and "MARK" or "WINDOW") .. (markWin.first and ("  from " .. markWin.first) or "")
+	elseif pendingStart then doing = "CREATE " .. createTool .. "  at " .. pendingStart
+	elseif TM.diff then doing = "DIFFICULTY SCREENS: " .. (TM.diff.ask and "Extreme?" or TM.DIFF[TM.diff.n])
+	elseif TM.auto then doing = "AUTO CREATE " .. TM.auto.kind .. (TM.auto.first and ("  from " .. TM.auto.first) or "")
+	elseif TM.mf then doing = "AUTO MENU FRAMES: " .. TM.mf.names[TM.mf.n]
+	elseif framesOf then doing = (framesFirst and ("FRAMES  from " .. framesFirst) or "FRAMES") .. ": " .. framesOf.text
+	elseif selected then doing = "EDIT: " .. selected.text
+	else doing = "B1: menu" end
+	y = TXT.say(X, y, maxw, doing, LB, 255, 255, 255)
+	TXT.sel(fontSmall)
+	local here = {}
+	for _, it in ipairs(itemsAt(f)) do
+		if it.kind == "move" then here[#here + 1] = { t = it.text, r = 255, g = 255, b = 0 }
+		elseif it.kind ~= "level" then here[#here + 1] = { t = it.text, r = 255, g = 255, b = 255 } end
+	end
+	y = TXT.sayParts(X, y, maxw, here, LS)
+	TXT.msgY = y
+	y = TXT.say(X, y, maxw, message, LS, 120, 255, 120)
+	if S.error then y = TXT.say(X, y, maxw, "SHEET: " .. S.error, LS, 255, 90, 90)
+	elseif S.warning then y = TXT.say(X, y, maxw, S.warning, LS, 255, 170, 60)
+	else y = y + LS end
+	local top = y + P(2)
+	local help = TXT.wrap("B1 menu  B2 go to  B3 undo  B4 play  UP/DOWN step  L1/R1 prev/next  SELECT text size  START+SELECT or ESC quit", maxw)
+	local by = OH - P(4) - LS - (#help - 1) * (LS + P(2))
+	for i, line in ipairs(help) do say(X, by + (i - 1) * (LS + P(2)), line, 220, 220, 220) end
+	local M = S.model
+	by = by - (LS + P(2))
+	if M then
+		say(X, by, (S.path and S.path:match("([^/\\]+)$") or "") .. "   " .. #M.levels .. " level(s), "
+			.. #M.deaths .. " death(s)" .. (S.error and "" or "   sheet OK"), 220, 220, 220)
+	end
+	-- what L1 / R1 go through (B4), always shown (v46)
+	by = by - (LS + P(2))
+	say(X, by, "L1/R1: " .. navKind, 150, 220, 255)
+	local lx = OW - math.floor(270 * TXT.k)
+	if mode == "list" then
+		-- long lines (what EDIT finds) start further left
+		local long = ""
+		for _, v in ipairs(list) do if #v > #long then long = v end end
+		lx = math.max(X, math.min(lx, OW - P(24) - TXT.width("> " .. long)))
+		local rows = math.max(3, math.min(14, math.floor((by - TXT.P(4) - top) / LS)))
+		local first = math.max(1, math.min(listPos - math.floor((rows - 1) / 2), #list - rows + 1))
+		for i = first, math.min(#list, first + rows - 1) do
+			local on = i == listPos
+			say(lx, top + (i - first) * LS, (on and "> " or "  ") .. list[i], on and 255 or 170, on and 255 or 170, on and 0 or 170)
+		end
+	elseif mode == "gset" then
+		local g = TM.gs
+		lx = OW - math.floor(300 * TXT.k)
+		local dy = math.max(top, math.min(top + P(20), by - P(6) - (LB + P(2) + 4 * LS)))
+		TXT.sel(font)
+		say(lx, dy, g.e.n .. ": " .. TM.gsText(g.v), 255, 255, 0)
+		dy = dy + LB + P(2)
+		TXT.sel(fontSmall)
+		say(lx, dy, "UP/DOWN  +" .. g.e.step .. " / -" .. g.e.step, 220, 220, 220)
+		say(lx, dy + LS, "RIGHT/LEFT  +" .. (10 * g.e.step) .. " / -" .. (10 * g.e.step), 220, 220, 220)
+		say(lx, dy + 2 * LS, "B1 ok   B2 default   B3 cancel", 220, 220, 220)
+		say(lx, dy + 3 * LS, "default: " .. TM.gsText(TM.DEF[g.e.n]), 220, 220, 220)
+	elseif mode == "death" then
+		lx = OW - math.floor(300 * TXT.k)
+		local dy = math.max(top, math.min(top + P(20), by - P(6) - (LB + P(2) + 4 * LS)))
+		TXT.sel(font)
+		say(lx, dy, "death: " .. TM.deathLabel(deathValue), 255, 255, 0)
+		dy = dy + LB + P(2)
+		local shown = nil
+		for _, x in ipairs(S.model.deaths) do if x.n == deathValue and not x.placeholder then shown = x end end
+		TXT.sel(fontSmall)
+		if shown then say(lx, dy + 3 * LS, shown.a .. "-" .. shown.b, 220, 220, 220)
+		elseif deathValue > 0 then say(lx, dy + 3 * LS, "no death " .. deathValue .. " in the sheet", 255, 120, 120) end
+		say(lx, dy, "UP/DOWN  +1 / -1", 220, 220, 220)
+		say(lx, dy + LS, "RIGHT/LEFT  +10 / -10", 220, 220, 220)
+		say(lx, dy + 2 * LS, "B1 ok   B3 cancel", 220, 220, 220)
+	end
+	return 1
+end
+
+function onInputPressed(w)
+	if TM.logo then TM.logo.ticks = math.min(TM.logo.ticks, 20); TM.logoEaten = w; return end
+	local f = discGetFrame()
+	if w == SW_START then downStart = true elseif w == SW_SELECT then downSelect = true end
+	if w == SW_SELECT then TXT.alone = not downStart elseif w == SW_START then TXT.alone = false end
+	if TM.live then
+		if w == SW_PLAY or w == SW_ESC then TM.stopAsked = true
+		elseif w ~= SW_START and w ~= SW_SELECT then TM.game.press(w) end
+		return
+	end
+	-- while the movie plays it is only watched (v53): B4 alone stops it, the
+	-- other buttons do nothing (no undo, no mark, no menu by mistake)
+	if (playing or togglePlay) and w ~= SW_PLAY then return end
+	if w == SW_UP or w == SW_DOWN or w == SW_LEFT or w == SW_RIGHT or w == SW_PREV or w == SW_NEXT then
+		held, heldTicks = w, 0			-- held: it repeats (onOverlayUpdate)
+	end
+	if mode == "list" then
+		if w == SW_UP then listPos = listPos > 1 and listPos - 1 or #list
+		elseif w == SW_DOWN then listPos = listPos < #list and listPos + 1 or 1
+		elseif w == SW_LEFT then listPos = math.max(1, listPos - 10)
+		elseif w == SW_RIGHT then listPos = math.min(#list, listPos + 10)
+		elseif w == SW_B1 then chooseInList(f)
+		elseif w == SW_B3 and TM.listBack then
+			TM.goBack()
+		elseif w == SW_B3 or w == SW_START or w == SW_ESC or (w == SW_GOTO and (listWhat == "goto" or listWhat == "gotoitem")) then
+			if listWhat == "diff" then TM.diff = nil; closeList("difficulty screens: nothing written")
+			elseif listWhat == "auto" then TM.auto = nil; closeList("AUTO CREATE: nothing created")
+			else closeList("cancelled") end
+		end
+		return
+	end
+	if mode == "gset" then TM.gsPress(w); return end
+	if mode == "death" then
+		if w == SW_UP then deathValue = math.min(TM.deathMax(), deathValue + 1); showDeath()
+		elseif w == SW_DOWN then deathValue = math.max(TM.deathMin(), deathValue - 1); showDeath()
+		elseif w == SW_RIGHT then deathValue = math.min(TM.deathMax(), deathValue + 10); showDeath()
+		elseif w == SW_LEFT then deathValue = math.max(TM.deathMin(), deathValue - 10); showDeath()
+		elseif w == SW_B1 then
+			if deathValue > 0 then lastDeath = deathValue end
+			TM.lastFreeze = deathValue == -4
+			mode = "browse"
+			leaveDeath()
+			if listWhat == "builddeath" then
+				buildStep(deathValue)
+			elseif listWhat == "editdeath" then
+				local it = selected
+				local err = editMove(it.obj, "death", deathValue)
+				selected = nil
+				message = err or changedText("move", it.a, it.b, nil, "death: " .. TM.deathLabel(deathValue))
+			else
+				newMove.death = deathValue
+				finishMove()
+			end
+		elseif w == SW_B3 or w == SW_START or w == SW_ESC then
+			leaveDeath()
+			if w == SW_B3 and listWhat == "editdeath" and selected then TM.reEdit(selected) else closeList("cancelled") end
+		end
+		return
+	end
+	if w == SW_RIGHT or w == SW_LEFT then
+		step(w == SW_RIGHT and 1 or -1)
+	elseif w == SW_PREV or w == SW_NEXT then
+		navJump(w == SW_NEXT and 1 or -1, f)
+	elseif w == SW_UP then stepIndex = math.min(#STEPS, stepIndex + 1)
+	elseif w == SW_DOWN then stepIndex = math.max(1, stepIndex - 1)
+	elseif w == SW_PLAY then
+		-- B4 is Dirk's pause button too: Dirk freezes or frees the picture
+		-- itself right after this call. Done at the next picture instead,
+		-- the movie does what this says (v52)
+		togglePlay = true
+	elseif w == SW_B1 then
+		if S.path then pressB1(f) else message = openMessage or "no sheet" end
+	elseif w == SW_GOTO and TM.mf then
+		TM.menuSkip()
+	elseif w == SW_GOTO then
+		if playing then discPause(); playing = false end
+		openGoto(f)
+	elseif w == SW_ESC or ((w == SW_SELECT or w == SW_START) and downStart and downSelect) then
+		askQuit()
+	elseif w == SW_B3 then
+		-- B3 (v50): drops what is being marked, or else undoes
+		if markWin and building then closeList("cancelled: nothing written")
+		elseif pendingStart then pendingStart = nil; message = "mark cancelled"
+		elseif framesOf then framesOf, framesFirst = nil, nil; message = "frames unchanged"
+		elseif TM.diff then TM.diff = nil; message = "difficulty screens: nothing written"
+		elseif TM.mf then TM.mf = nil; message = "AUTO MENU FRAMES: nothing written"
+		elseif TM.auto then
+			if TM.auto.scanning and dirkScanCancel ~= nil then dirkScanCancel() end
+			TM.auto = nil
+			message = "AUTO CREATE: cancelled"
+		elseif undo() then message = "undone"
+		else message = "nothing to undo" end
+	end
+end
+
+function onInputReleased(w)
+	if TM.logoEaten == w then TM.logoEaten = nil; return end
+	if w == held then held = nil end
+	if TM.live then
+		if w ~= SW_PLAY and w ~= SW_ESC and w ~= SW_START and w ~= SW_SELECT then TM.game.rel(w) end
+		if w == SW_START then downStart = false elseif w == SW_SELECT then downSelect = false end
+		return
+	end
+	if w == SW_SELECT and TXT.alone then TXT.alone = false; TXT.next() end
+	if w == SW_START then downStart = false elseif w == SW_SELECT then downSelect = false end
+end
+
+-- the sheet is written at each change: nothing to do when Dirk closes.
+-- These replace KimmyScript's own calls, which would run a game.
+function onShutdown() end
+function onMouseMoved() end
+function onSoundCompleted() end
+
+-- for KimmyScript's tests: the inside of the create mode
+if kimmyWizardTest ~= nil then
+	kimmyWizardTest({ S = S, parse = parse, open = open, changed = changed, check = check, undo = undo,
+		addMove = addMove, addLevel = addLevel, addScene = addScene, addDeath = addDeath, setClip = setClip,
+		setMenu = setMenu, splitScene = splitScene, joinScene = joinScene, introEndsHere = introEndsHere, editMove = editMove, editScene = editScene, editIntro = editIntro, editDeath = editDeath, deleteLevel = deleteLevel,
+		itemsAt = itemsAt, readLines = readLines, write = write, kinds = MOVE_TYPES, levelAt = levelAt, sceneAt = sceneAt,
+		-- a builder's questions answered in turn (a place in the list, or a word): the move it writes
+		build = function(kind, picks, a, b, lv, sc)
+			local fn = type(kind) == "function" and kind or BUILDERS[kind] or orBuilder(kind)
+			local co = coroutine.create(function() return fn(a, b, lv, sc) end)
+			local ok, q, ch = coroutine.resume(co)
+			local i, asked = 1, {}
+			while ok and coroutine.status(co) ~= "dead" do
+				asked[#asked + 1] = q
+				local p = picks[i]; i = i + 1
+				if type(q) == "table" then
+					if q.mark and not q.one then ok, q, ch = coroutine.resume(co, p[1], p[2]) else ok, q, ch = coroutine.resume(co, p) end
+				else
+					if type(p) == "string" then
+						local w = p
+						for k, c in ipairs(ch) do if c == w or c:match("^(%S+)") == w then p = k; break end end
+						if type(p) == "string" then for k, c in ipairs(ch) do if c:sub(1, #w) == w then p = k; break end end end
+					end
+					if type(p) ~= "number" or not ch[p] then error("no answer " .. tostring(picks[i - 1]) .. " to: " .. q) end
+					ok, q, ch = coroutine.resume(co, ch[p], p)
+				end
+			end
+			if not ok then error(q) end
+			return q, asked
+		end, builders = BUILDERS, choiceBuilder = choiceBuilder, setChoice = setChoice, connect = connect, openEdit = openEdit, TM = TM, TXT = TXT,
+		state = function() return { mode = mode, listPos = listPos, list = list, navKind = navKind, deathValue = deathValue, message = message, text = TXT.n, msgY = TXT.msgY } end,
+		setDir = function(d, n) DIR, NAME = d, n end, message = function() return openMessage end })
+end

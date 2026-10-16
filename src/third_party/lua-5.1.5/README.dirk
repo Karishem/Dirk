@@ -1,0 +1,17 @@
+Lua 5.1.5 for Dirk
+==================
+
+Lua 5.1.5 (lua-5.1.5.tar.gz, md5 2e115fe26e435e33b0d5c022e4490567, one fix below),
+built into Dirk when Lua 5.1 is not found through pkg-config, or always with
+-DDIRK_BUNDLED_LUA=ON (see CMakeLists.txt). KimmyScript and Wizard are
+written for Lua 5.1: a later Lua (5.2, 5.3, 5.4) or LuaJIT will not do.
+
+Only src/ (the library and the lua/luac sources) and COPYRIGHT/README are
+kept; doc/, etc/, test/ and the Makefiles are left out.
+
+One change, the fix for Lua 5.1.5 bug "stack overflow in vararg functions"
+(CVE-2014-5461, the same patch Debian and Ubuntu apply), in src/ldo.c,
+luaD_precall():
+    luaD_checkstack(L, p->maxstacksize + p->numparams);
+
+License: MIT, see COPYRIGHT.

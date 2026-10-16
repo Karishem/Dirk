@@ -1,0 +1,26 @@
+-- Audio tracks e2e (2026-09-27): a Hypseus-style game (Video/test.m2v +
+-- test.ogg + test-fr.ogg + test_it.ogg). Each Left Ctrl press (switch 6)
+-- picks the next soundtrack through the same Lua call Dirk Options uses;
+-- run.sh records Dirk's real audio output (SDL "disk" driver).
+OVERLAY_UPDATED = 1
+SCANCODE = { LCTRL = { name = "LCTRL", value = 224 } } -- what KimmyScript's framework.kimmy defines, for controls.cfg
+local started = false
+local steps = { 2, 3, 9 } -- FR, IT, then out of range (stays IT)
+local phase = 0
+function onOverlayUpdate()
+  if not started then
+    started = true
+    local names = {}
+    for i = 1, dirkGetAudioTrackCount() do names[#names + 1] = dirkGetAudioTrackName(i) end
+    print("TRACKS count=" .. dirkGetAudioTrackCount() .. " names=" .. table.concat(names, ",") .. " index=" .. dirkGetAudioTrackIndex())
+    discPlay()
+  end
+  return OVERLAY_UPDATED
+end
+function onInputPressed(what)
+  if what ~= 6 then return end
+  phase = phase + 1
+  if steps[phase] then dirkSetAudioTrackIndex(steps[phase]) end
+  print("PHASE " .. phase .. " index=" .. dirkGetAudioTrackIndex() .. " name=" .. dirkGetAudioTrackName(dirkGetAudioTrackIndex()))
+end
+function onInputReleased(what) end

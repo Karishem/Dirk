@@ -1,0 +1,12 @@
+1
+00:00:01,000 --> 00:00:03,000
+Hello Reika
+
+2
+00:00:04,000 --> 00:00:06,000
+Première ligne
+Deuxième ligne
+
+3
+00:00:07,000 --> 00:00:09,000
+A very very long subtitle line that is much wider than the picture itself, on purpose, to check it gets shrunk

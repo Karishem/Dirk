@@ -1,0 +1,105 @@
+Dirk -- third-party software notices
+====================================
+
+Dirk (dirk.exe) and the Dirk Downloader are built on the free and
+open-source components listed below. Each one keeps its own license;
+the full license texts are in the "Licenses" folder next to this file.
+
+
+Dirk itself
+-----------
+Dirk (dirk.exe, Wizard.exe, the Dirk Downloader) and the KimmyScript
+installed with it are free software, under the GNU General Public
+License, version 3 or (at your option) any later version --
+Licenses/GPL-3.0.txt
+Source code: https://github.com/Karishem/Dirk
+
+
+SDL3, SDL3_image, SDL3_mixer, SDL3_ttf
+--------------------------------------
+Simple DirectMedia Layer and its companion libraries.
+Copyright (C) 1997-2026 Sam Lantinga and contributors.
+License: zlib -- Licenses/SDL3.txt, SDL3_image.txt, SDL3_mixer.txt,
+SDL3_ttf.txt
+https://www.libsdl.org/
+
+
+FFmpeg (libavformat, libavcodec, libavutil, libswscale, libswresample)
+---------------------------------------------------------------------
+Video and audio decoding.
+Copyright (C) the FFmpeg developers.
+License: GNU Lesser General Public License, version 2.1 or later --
+Licenses/LGPL-2.1.txt
+Version used: FFmpeg 7.1 (release/7.1 branch), built as a minimal
+decode-only configuration (no GPL or nonfree components).
+FFmpeg is not modified by Dirk. Its source code is available from
+https://ffmpeg.org/download.html and https://github.com/FFmpeg/FFmpeg
+(branch release/7.1).
+
+
+FreeType (used by SDL3_ttf)
+---------------------------
+Portions of this software are copyright (C) The FreeType Project
+(https://freetype.org). All rights reserved.
+License: FreeType License -- Licenses/FreeType-FTL.txt
+
+
+Lua 5.1
+-------
+Scripting language that runs the games' scripts.
+Copyright (C) 1994-2012 Lua.org, PUC-Rio.
+License: MIT -- Licenses/Lua-5.1.txt
+https://www.lua.org/
+
+
+GNU libiconv (used by SDL3)
+---------------------------
+Character set conversion.
+Copyright (C) Free Software Foundation, Inc.
+License: GNU Lesser General Public License, version 2.1 or later --
+Licenses/LGPL-2.1.txt
+Not modified by Dirk. Source code: https://www.gnu.org/software/libiconv/
+
+
+MinGW-w64 runtime (winpthreads)
+-------------------------------
+Threading support, statically linked into dirk.exe.
+Copyright (c) 2011-2016 mingw-w64 project; parts Copyright (c) 2010
+Lockless Inc.
+License: MIT and BSD-3-Clause -- Licenses/MinGW-w64-winpthreads.txt
+https://www.mingw-w64.org/
+
+
+DejaVu Sans Bold (KimmyScript/Cfg/dirk_loading_font.ttf)
+--------------------------------------------------------
+Dirk's own on-screen text: loading screen, joystick wizard, error banner
+and subtitles. Distributed unmodified.
+Copyright (C) 2003 Bitstream, Inc. (Bitstream Vera); DejaVu changes are in
+the public domain; Arev glyphs Copyright (C) 2006 Tavmjong Bah.
+License: Bitstream Vera Fonts license / Arev Fonts license --
+Licenses/DejaVu-Fonts.txt
+https://dejavu-fonts.github.io/
+
+
+miniz (inside dirk.exe)
+-----------------------
+Reads zipped games (.zdirk).
+Copyright 2013-2014 RAD Game Tools and Valve Software; Copyright
+2010-2014 Rich Geldreich and Tenacious Software LLC.
+License: MIT -- Licenses/miniz.txt
+https://github.com/richgel999/miniz (version 3.0.2, not modified)
+
+
+megatools (megatools.exe, used by the Dirk Downloader)
+------------------------------------------------------
+Command-line client for Mega.nz, distributed unmodified.
+Copyright (C) Ondrej Jirman and contributors.
+License: GNU GPL version 2 or later -- Licenses/GPL-2.0.txt
+Source code: https://megatools.megous.com/
+Windows builds: https://xff.cz/megatools/builds/
+
+
+Games
+-----
+Games downloaded or installed separately come with their own licenses
+and are not covered by this file.

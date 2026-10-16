@@ -1,0 +1,1563 @@
+--[[
+
+PROGRAM NAME:	KIMMY SCRIPT
+AUTHOR:			KARIS (2020/2026)
+
+This file is part of KIMMY SCRIPT (GNU General Public License).
+
+]]
+
+local C = { ACTDOWN = 121, ACTLEFT = 122, ACTRIGHT = 123, ACTUP = 120, ALL_CHANNELS = 3, ANYTHING = 54,
+	ARROWSELL = 215, ARROWSELR = 216, B1 = 5, B1B2 = 155, B2 = 6, B3 = 7, BARFULL = 245, BARNONE = 246,
+	BEATSTATUS = 2, BLACK = 11, BLUE = 3, BONUS = 208, BOTTOM = 2, BUFFMOVE = 100, BUTTON1 = 5, BUTTON2 = 6,
+	BUTTON3 = 7, BUTTON4 = 8, BUTTONS = 233, CHANNEL_LEFT = 1, CHANNEL_RIGHT = 2, CHOOSE = 50, COMBO = 20,
+	CREDIT = 202, D = 2, D1 = 211, D2 = 212, D3 = 213, DA = 214, DEATH = 241, DEATHCOUNT = 3, DEATHPENALTY = 0,
+	DL = 11, DOPT_FREEPLAY = 0, DOPT_INFINITE_CONTINUES = 4, DOUBLE = 150, DOWN = 2, DOWNLEFT = 11,
+	DOWNRIGHT = 12, DR = 12, DTHMIRROR = 6, DU = 152, EXTRALIFE = 70000, FONT_QUALITY_BLENDED = 3,
+	FONT_QUALITY_SHADED = 2, FONT_QUALITY_SOLID = 1, FREEPLAY = 217, GETREADY = 218, GRAY = 6, GREEN = 5,
+	GREY = 10, HDOWN = 272, HLEFT = 273, HOLD = 24, HOLDBUT = 136, HOLDDOWN = 133, HOLDLEFT = 134,
+	HOLDRIGHT = 135, HOLDUP = 132, HRIGHT = 274, HUP = 271, INSERTCOIN = 201, INTROCLIP = 2, INTROCLIPEND = 3,
+	KIMMY = 278, L = 3, LEFT = 3, LETGO = 25, LEVEL = 204, LEVELSTARTED = 1, LIGHTBLUE = 9, LIVES = 203,
+	LOOP = 22, LOOPLEFT = 137, LOOPRIGHT = 138, LR = 153, LVLREPLAY = 7, MASH = 23, MASH2 = 125, MASH2MAX = 129,
+	MASH2MIN = 128, MASH3 = 250, MASHMAX = 127, MASHMIN = 126, MIDDLE = 3, MINUS = 243, MIRROR = 5, MISC = 12,
+	MOVE = 230, MOVEFAIL = -3, MOVEPENDING = -2, MULTI = 21, MUTE_DELAY = 35, NB1 = 256, NB2 = 257, NB3 = 258,
+	NDL = 265, NDOWN = 253, NDR = 266, NEMPTY = 251, NHDOWN = 268, NHLEFT = 269, NHOLD = 249, NHRIGHT = 270,
+	NHUP = 267, NLEFT = 254, NM = -1, NODEATH = -1, NODEATHSCORE = -2, NOMOVE = -1, NOMOVES = 232, NOTHING = 55,
+	NRIGHT = 255, NSDOWN = 260, NSLEFT = 261, NSRIGHT = 262, NSUP = 259, NUL = 263, NUMX = 279, NUP = 252,
+	NUR = 264, OKMAP = 210, ORANGE = 6, OUT = 1000, OVERLAY_NOT_UPDATED = 0, OVERLAY_UPDATED = 1, PATH = 51,
+	PAUSED = 276, PERFECT = 244, PERFECTBONUS = 0, PINK = 7, PURPLE = 8, PW0 = 221, PW1 = 222, PW2 = 223,
+	PW3 = 224, PW4 = 225, PW5 = 226, PW6 = 227, PW7 = 228, PWFULL = 229, R = 4, RED = 2, REV_DELAY = 10,
+	RIGHT = 4, RL = 154, RUN = 124, RUNMAX = 131, RUNMIN = 130, SCAN = 247, SCENECOMPLETE = 2, SCENEID = 1,
+	SCENES = 206, SCORE = 207, SCOREGAME = 0, SCORELEVEL = 1000, SCOREMOVE = 500, SCORESCENE = 0, SCORESECRET = 1,
+	SECRET = 220, SELMAP = 209, SKIP = 100, SKIPINTRO = 205, SOUND_ERROR_FULL = -2, SOUND_ERROR_INVALID = -1,
+	SOUND_REMOVE_HANDLE = -1, SPECIALS = 235, STICK = 234, SWITCH_BUTTON1 = 6, SWITCH_BUTTON2 = 7,
+	SWITCH_BUTTON3 = 8, SWITCH_BUTTON4 = 21, SWITCH_COIN1 = 9, SWITCH_COIN2 = 10, SWITCH_CONSOLE = 20,
+	SWITCH_DOWN = 2, SWITCH_GRAB = 23, SWITCH_LEFT = 1, SWITCH_PAUSE = 19, SWITCH_QUIT = 18, SWITCH_RESET = 16,
+	SWITCH_RIGHT = 3, SWITCH_SCREENSHOT = 17, SWITCH_SERVICE = 14, SWITCH_SKILL1 = 11, SWITCH_SKILL2 = 12,
+	SWITCH_SKILL3 = 13, SWITCH_START1 = 4, SWITCH_START2 = 5, SWITCH_TEST = 15, SWITCH_TILT = 22, SWITCH_UP = 0,
+	TB = 237, TG = 239, TILT = 275, TIME = 248, TIMED = 53, TITLE = 1, TN = 236, TOLEVEL = 103, TOP = 1,
+	TOPSCORE = 219, TOSCENE = 104, TOTAL = 242, TOTALSCENES = 4, TP = 240, TS = 238, U = 1, UD = 151, UL = 9,
+	UP = 1, UPLEFT = 9, UPRIGHT = 10, UR = 10, WAIT = 55, WARNING = 231, WAY = 101, WAYOUT = 102, WHITE = 1,
+	YELLOW = 4, YESNO = 52 }
+
+local NP = {}
+local NPCTX, SCENECTX, LEVELCTX = nil, nil, nil
+local function notplain(msg) error({ np = NP, msg = NPCTX and (NPCTX .. ": " .. msg) or msg }, 0) end
+local function fatal(msg) error({ fatal = msg }, 0) end
+local function isNP(e) return type(e) == "table" and e.np == NP end
+
+local WS = "[%s\28\29\30\31\133\160]"
+local function strip(s) return (s:gsub("^" .. WS .. "+", ""):gsub(WS .. "+$", "")) end
+local function rstrip(s) return (s:gsub(WS .. "+$", "")) end
+local function starts(s, p) return s:sub(1, #p) == p end
+local function count(s, c)
+	local n = 0
+	for _ in s:gmatch(c) do n = n + 1 end
+	return n
+end
+local function ljust(s, w) if #s < w then return s .. string.rep(" ", w - #s) end return s end
+local function truthy(x)
+	if x == nil or x == false or x == 0 or x == "" then return false end
+	if type(x) == "table" and #x == 0 then return false end
+	return true
+end
+local function isint(v) return type(v) == "number" and v == math.floor(v) end
+local function sortedKeys(t)
+	local k = {}
+	for x in pairs(t) do k[#k + 1] = x end
+	table.sort(k)
+	return k
+end
+local function nkeys(t)
+	local n = 0
+	for _ in pairs(t) do n = n + 1 end
+	return n
+end
+local function oneToN(t, n)
+	if nkeys(t) ~= n then return false end
+	for i = 1, n do if t[i] == nil then return false end end
+	return true
+end
+local function eqv(a, b)
+	if type(a) == "table" and type(b) == "table" then
+		if #a ~= #b then return false end
+		for i = 1, #a do if not eqv(a[i], b[i]) then return false end end
+		return true
+	end
+	return a == b
+end
+local function range(a, b)
+	local t = {}
+	for i = a, b do t[#t + 1] = i end
+	return t
+end
+local function splitPlain(s, sep)
+	local out, i = {}, 1
+	while true do
+		local j = s:find(sep, i, true)
+		if not j then out[#out + 1] = s:sub(i); break end
+		out[#out + 1] = s:sub(i, j - 1)
+		i = j + #sep
+	end
+	return out
+end
+
+local function strip_code(line)
+	local out, i, n = {}, 1, #line
+	while i <= n do
+		local c = line:sub(i, i)
+		if c == '"' or c == "'" then
+			local j = i + 1
+			while j <= n and line:sub(j, j) ~= c do
+				if line:sub(j, j) == "\\" then j = j + 2 else j = j + 1 end
+			end
+			out[#out + 1] = '""'
+			i = j + 1
+		elseif line:sub(i, i + 1) == "--" then
+			return table.concat(out), line:sub(i)
+		else
+			out[#out + 1] = c
+			i = i + 1
+		end
+	end
+	return table.concat(out), ""
+end
+
+local OPEN = { ["function"] = true, ["if"] = true, ["do"] = true, ["repeat"] = true }
+local CLOSE = { ["end"] = true, ["until"] = true }
+local function depth_delta(code)
+	local d = 0
+	for w in code:gmatch("[%w_]+") do
+		if OPEN[w] then d = d + 1 elseif CLOSE[w] then d = d - 1 end
+	end
+	return d
+end
+
+local function split_fields(body)
+	local fields, depth, cur, i, n = {}, 0, {}, 1, #body
+	while i <= n do
+		local c = body:sub(i, i)
+		if c == '"' or c == "'" then
+			local j = i + 1
+			while j <= n and body:sub(j, j) ~= c do
+				if body:sub(j, j) == "\\" then j = j + 2 else j = j + 1 end
+			end
+			cur[#cur + 1] = body:sub(i, j)
+			i = j + 1
+		else
+			if c == "{" or c == "(" then depth = depth + 1 elseif c == "}" or c == ")" then depth = depth - 1 end
+			if c == "," and depth == 0 then
+				fields[#fields + 1] = strip(table.concat(cur))
+				cur = {}
+			else
+				cur[#cur + 1] = c
+			end
+			i = i + 1
+		end
+	end
+	local last = strip(table.concat(cur))
+	if last ~= "" then fields[#fields + 1] = last end
+	return fields
+end
+
+local function value(text)
+	local t = strip(text)
+	if t:match("^%-?%d+$") or t:match("^%-?%d+%.%d+$") then return tonumber(t) + 0 end
+	local s = t:match('^"([^"\\]*)"$') or t:match("^'([^'\\]*)'$")
+	if s then return s end
+	if t == "true" then return true elseif t == "false" then return false end
+	if C[t] ~= nil then return C[t] end
+	if t:sub(1, 1) == "{" and t:sub(-1) == "}" and #t >= 2 then
+		local l = {}
+		for _, f in ipairs(split_fields(t:sub(2, -2))) do l[#l + 1] = value(f) end
+		return l
+	end
+	local a, op, b = t:match("^(%-?%d+)%s*([%+%-])%s*(%d+)$")
+	if a then
+		if op == "+" then return tonumber(a) + tonumber(b) + 0 end
+		return tonumber(a) - tonumber(b) + 0
+	end
+	notplain('computed value "' .. t .. '"')
+end
+
+local function table_fields(text, upto)
+	local t = strip(text)
+	if not (t:sub(1, 1) == "{" and t:sub(-1) == "}" and #t >= 2) then notplain("not a table: " .. t) end
+	local fields = split_fields(t:sub(2, -2))
+	for i, f in ipairs(fields) do
+		if f:match("^[%a_][%w_]*%s*=") then notplain("named field in " .. t) end
+		if upto == nil or i <= upto then value(f) end
+	end
+	return fields
+end
+
+local function find_function(lines, name)
+	local start
+	for i, l in ipairs(lines) do
+		if l:match("^%s*function%s+" .. name .. "%s*%(") then start = i; break end
+	end
+	if not start then return nil end
+	local depth = 0
+	for i = start, #lines do
+		local code = strip_code(lines[i])
+		depth = depth + depth_delta(code)
+		if depth == 0 then return start, i end
+	end
+	fatal("setupMoves() has no matching end")
+end
+
+local function chainKey(s, kw, var)
+	local k = s:match("^" .. kw .. "%s+" .. var .. "%s*==%s*(.-)%s+then$")
+	if k and k ~= "" then return k end
+end
+
+local function parse_chain(lines, a, b, var)
+	local blocks, stray, depth, cur = {}, {}, 0, nil
+	for i = a, b - 1 do
+		local code = strip_code(lines[i])
+		local s = strip(code)
+		if depth == 0 then
+			local kw, key = "if", chainKey(s, "if", var)
+			if not key then kw, key = "elseif", chainKey(s, "elseif", var) end
+			if key and (kw == "if" or cur ~= nil or #blocks > 0) then
+				if cur then blocks[#blocks + 1] = { cur[1], cur[2], i - 1 } end
+				cur = { strip(key), i + 1 }
+				if kw == "if" then depth = 1 end
+			elseif s == "end" and cur ~= nil then
+				blocks[#blocks + 1] = { cur[1], cur[2], i - 1 }
+				cur = nil
+			elseif s ~= "" then
+				stray[#stray + 1] = i
+				depth = depth + depth_delta(code)
+			end
+		else
+			local handled = false
+			if depth == 1 then
+				local key = chainKey(s, "elseif", var)
+				if key then
+					blocks[#blocks + 1] = { cur[1], cur[2], i - 1 }
+					cur = { strip(key), i + 1 }
+					handled = true
+				elseif s == "else" then
+					stray[#stray + 1] = i
+					handled = true
+				end
+			end
+			if not handled then
+				local d = depth_delta(code)
+				if depth + d == 0 and s == "end" and cur ~= nil then
+					blocks[#blocks + 1] = { cur[1], cur[2], i - 1 }
+					cur = nil
+					depth = 0
+				else
+					depth = depth + d
+				end
+			end
+		end
+	end
+	if cur ~= nil then stray[#stray + 1] = b end
+	return blocks, stray
+end
+
+local function statements(lines, a, b)
+	local out, buf, com, bal = {}, {}, {}, 0
+	for i = a, b do
+		local code, comment = strip_code(lines[i])
+		if strip(code) == "" and #buf == 0 then
+			if strip(comment) ~= "" then out[#out + 1] = { "", strip(comment) } end
+		else
+			buf[#buf + 1] = (comment == "") and lines[i] or lines[i]:sub(1, #lines[i] - #comment)
+			if comment ~= "" then com[#com + 1] = strip(comment) end
+			bal = bal + count(code, "{") - count(code, "}")
+			if bal == 0 then
+				local parts = {}
+				for _, x in ipairs(buf) do parts[#parts + 1] = strip(x) end
+				out[#out + 1] = { strip(table.concat(parts, " ")), table.concat(com, " ") }
+				buf, com = {}, {}
+			end
+		end
+	end
+	if #buf > 0 then notplain("unbalanced braces") end
+	return out
+end
+
+local LEVEL_NAMES = { "normal", "hard", "extreme" }
+
+local function parse_cond(text)
+	local t = strip(text)
+	local op, d, rest = t:match("^dip_Difficulty%s*(>=?)%s*(%d+)(.*)$")
+	if not op then notplain('condition "' .. t .. '"') end
+	local level = tonumber(d) + (op == ">" and 1 or 0)
+	if not LEVEL_NAMES[level] then notplain('condition "' .. t .. '"') end
+	local cond
+	if rest ~= "" then
+		local st, tf = rest:match("^%s+and%s+stage%[%s*(%d+)%s*%]%[%s*BEATSTATUS%s*%]%s*==%s*(%a+)$")
+		if not st or (tf ~= "true" and tf ~= "false") then notplain('condition "' .. t .. '"') end
+		cond = { tf == "true" and "ifbeaten" or "ifnotbeaten", st }
+	end
+	return level, cond
+end
+
+local function condEq(a, b)
+	if a == nil or b == nil then return a == b end
+	return a[1] == b[1] and a[2] == b[2]
+end
+
+local function counter_form(parts)
+	for _, p in ipairs(parts) do
+		if p:match("^n%s*=%s*%d+$") or p:match("^n%s*=%s*n%s*%+%s*1$") or p:match("^move%[%s*n%s*%]")
+			or p:match("^totalMoves%s*=%s*n%s*%-%s*1$") then return true end
+	end
+	return false
+end
+
+local function plainInt(v, text)
+	return isint(v) and not strip(text):find(".", 1, true)
+end
+
+local function parse_scene(lines, a, b)
+	local sc = { moves = {}, path = {}, timed = {}, choice = {}, notes = {}, before = {}, ov_scene = {}, ov_moves = {} }
+	local pending, counter = {}, nil
+	local mode, cond, then_stmts, deferred = nil, nil, {}, {}
+	for _, stt in ipairs(statements(lines, a, b)) do
+		local text, comment = stt[1], stt[2]
+		if text == "" then
+			pending[#pending + 1] = comment
+		else
+			local s_ = strip(text)
+			local cnd = s_:match("^if%s+(.-)%s+then$")
+			if cnd and cnd ~= "" then
+				if mode ~= nil then notplain("if inside if") end
+				local lvl, c = parse_cond(cnd)
+				cond = { lvl, c }
+				mode, then_stmts = "then", {}
+			elseif s_ == "else" then
+				if mode ~= "then" then notplain("else") end
+				mode = "else"
+			elseif s_ == "end" then
+				if mode == nil then notplain("end") end
+				deferred[#deferred + 1] = { cond, then_stmts }
+				mode = nil
+			elseif mode == "then" then
+				then_stmts[#then_stmts + 1] = s_
+			else
+				local parts = {}
+				for _, p in ipairs(splitPlain(text, ";")) do
+					p = strip(p)
+					if p ~= "" then parts[#parts + 1] = p end
+				end
+				local skip = false
+				if #parts == 2 then
+					local target = parts[1]:match("^(.-)%s*=%s*nil$")
+					if target and target ~= "" then
+						target = strip(target)
+						if target == "move" and parts[2]:match("^move%s*=%s*{%s*}$") then
+							skip = true
+						else
+							if not starts(parts[2], target) then notplain(text) end
+							parts = { parts[2] }
+						end
+					end
+				end
+				if skip then
+				elseif counter_form(parts) then
+					for _, st in ipairs(parts) do
+						local nn = st:match("^n%s*=%s*(%d+)$")
+						if nn then
+							counter = tonumber(nn)
+						elseif st:match("^n%s*=%s*n%s*%+%s*1$") then
+							if counter == nil then notplain(text) end
+							counter = counter + 1
+						elseif st:match("^totalMoves%s*=%s*n%s*%-%s*1$") then
+							if counter == nil or sc.total ~= nil then notplain(st) end
+							sc.total = { counter - 1, tostring(counter - 1) }
+						else
+							local body = st:match("^move%[%s*n%s*%]%s*=%s*({.*})$")
+							if not body or counter == nil then notplain(st) end
+							local k = counter
+							if sc.moves[k] then notplain("move[" .. k .. "] set twice") end
+							sc.moves[k] = { table_fields(body, 4), comment }
+							sc.before[k] = pending
+							pending = {}
+						end
+					end
+				else
+					if #parts ~= 1 then notplain(text) end
+					local st = parts[1]
+					local done = false
+					for _, nm in ipairs({ "sceneStart", "sceneEnd", "totalMoves" }) do
+						local v = st:match("^" .. nm .. "%s*=%s*(.+)$")
+						if v then
+							local val = value(v)
+							if not plainInt(val, v) then notplain(st) end
+							local key = ({ sceneStart = "start", sceneEnd = "stop", totalMoves = "total" })[nm]
+							if sc[key] ~= nil then notplain(nm .. " set twice") end
+							sc[key] = { val, strip(v) }
+							done = true
+							break
+						end
+					end
+					if not done then
+						for _, nm in ipairs({ "move", "path", "timed", "choice" }) do
+							local k, body = st:match("^" .. nm .. "%[(%d+)%]%s*=%s*({.*})$")
+							if k then
+								k = tonumber(k)
+								local kind = nm == "move" and "moves" or nm
+								if sc[kind][k] then notplain(kind .. "[" .. k .. "] set twice") end
+								sc[kind][k] = { table_fields(body, nm == "move" and 4 or nil), comment }
+								if kind == "moves" then
+									sc.before[k] = pending
+									pending = {}
+								end
+								done = true
+								break
+							end
+						end
+					end
+					if not done then notplain(st) end
+				end
+			end
+		end
+	end
+	if mode ~= nil then notplain("if without end") end
+	for _, dv in ipairs(deferred) do
+		local level, c = dv[1][1], dv[1][2]
+		for _, st in ipairs(dv[2]) do
+			local nm, v = st:match("^(sceneStart)%s*=%s*(.+)$")
+			if not nm then nm, v = st:match("^(sceneEnd)%s*=%s*(.+)$") end
+			if nm then
+				if not plainInt(value(v), v) then notplain(st) end
+				local key = nm == "sceneStart" and "start" or "finish"
+				local ov = sc.ov_scene[level]
+				if not ov then ov = { cond = c }; sc.ov_scene[level] = ov end
+				if not condEq(ov.cond, c) or ov[key] ~= nil then notplain("two different changes for " .. LEVEL_NAMES[level]) end
+				ov[key] = strip(v)
+			else
+				local kw, k, body = st:match("^(move)%[(%d+)%]%s*=%s*({.*})$")
+				if not kw then kw, k, body = st:match("^(path)%[(%d+)%]%s*=%s*({.*})$") end
+				if not kw then notplain(st) end
+				k = tonumber(k)
+				local fields = table_fields(body, kw == "move" and 4 or nil)
+				local om = sc.ov_moves[k]
+				if not om then om = {}; sc.ov_moves[k] = om end
+				local ov = om[level]
+				if not ov then ov = { cond = c, pos = {} }; om[level] = ov end
+				if not condEq(ov.cond, c) then notplain("two different changes for " .. LEVEL_NAMES[level]) end
+				if kw == "path" then
+					if not sc.path[k] or ov.path then notplain("path[" .. k .. "] only set for some difficulties") end
+					ov.path = fields
+				else
+					if not sc.moves[k] then notplain("move[" .. k .. "] only set for some difficulties") end
+					local base = sc.moves[k][1]
+					for i = 1, math.max(#base, #fields) do
+						local x, y = base[i] and strip(base[i]) or "nil", fields[i] and strip(fields[i]) or "nil"
+						if x ~= y then ov.pos[i] = fields[i] or "nil" end
+					end
+				end
+			end
+		end
+	end
+	for _, kk in ipairs({ { "start", "start" }, { "stop", "finish" } }) do
+		local any = false
+		for _, ov in pairs(sc.ov_scene) do if ov[kk[2]] ~= nil then any = true end end
+		if any and sc[kk[1]] == nil then notplain("scene " .. kk[2] .. " only set for some difficulties") end
+	end
+	sc.notes = pending
+	for _, key in ipairs({ "start", "stop", "total" }) do
+		if sc[key] == nil then notplain("no " .. key) end
+	end
+	local n = nkeys(sc.moves)
+	if not oneToN(sc.moves, n) then notplain("moves are not numbered 1.." .. n) end
+	if sc.total[1] ~= n then notplain("totalMoves = " .. tostring(sc.total[1]) .. " but " .. n .. " moves") end
+	return sc
+end
+
+local DIR_ORDER = { "UP", "DOWN", "LEFT", "RIGHT", "U", "D", "L", "R", "UPLEFT", "UPRIGHT", "DOWNLEFT", "DOWNRIGHT",
+	"UL", "UR", "DL", "DR", "BUTTON1", "BUTTON2", "BUTTON3", "B1", "B2", "B3" }
+local DIR_NAMES = { UP = "UP", DOWN = "DOWN", LEFT = "LEFT", RIGHT = "RIGHT", U = "UP", D = "DOWN", L = "LEFT", R = "RIGHT",
+	UPLEFT = "UPLEFT", UPRIGHT = "UPRIGHT", DOWNLEFT = "DOWNLEFT", DOWNRIGHT = "DOWNRIGHT", UL = "UPLEFT", UR = "UPRIGHT",
+	DL = "DOWNLEFT", DR = "DOWNRIGHT", BUTTON1 = "B1", BUTTON2 = "B2", BUTTON3 = "B3", B1 = "B1", B2 = "B2", B3 = "B3" }
+local PLAIN = { "ACTUP", "ACTDOWN", "ACTLEFT", "ACTRIGHT", "RUN", "MASH2", "MASHMIN", "MASHMAX", "MASH2MIN",
+	"MASH2MAX", "RUNMIN", "RUNMAX", "HOLDUP", "HOLDDOWN", "HOLDLEFT", "HOLDRIGHT", "HOLDBUT",
+	"LOOPLEFT", "LOOPRIGHT", "DOUBLE", "UD", "DU", "LR", "RL", "LETGO", "ANYTHING", "NOTHING" }
+local OTHER = { "COMBO", "MULTI", "LOOP", "MASH", "HOLD", "PATH", "YESNO", "TIMED", "CHOOSE", "SKIP", "WAY",
+	"WAYOUT", "TOSCENE", "TOLEVEL" }
+local function set(l) local t = {} for _, x in ipairs(l) do t[x] = true end return t end
+local PLAINSET, OTHERSET = set(PLAIN), set(OTHER)
+local ENDCAPITAL = { GetReady = true, SupDeath = true }
+local DIFF_NAMES = { "normal", "hard", "extreme" }
+local STRING_DIRS = { U = "UP", D = "DOWN", L = "LEFT", R = "RIGHT", B1 = "B1", B2 = "B2", B3 = "B3" }
+local BASIC = set({ "UP", "DOWN", "LEFT", "RIGHT", "UPLEFT", "UPRIGHT", "DOWNLEFT", "DOWNRIGHT", "B1", "B2", "B3" })
+local READ5 = set({ "HOLD", "SKIP", "NOTHING" })
+local READ56 = set({ "MASH", "COMBO", "MULTI", "LOOP", "CHOOSE", "TIMED", "PATH", "YESNO" })
+local READ6 = set({ "RUN", "MASH2", "LOOPLEFT", "LOOPRIGHT", "DOUBLE", "UD", "DU", "LR", "RL" })
+local function reads(kind, i)
+	if i <= 4 then return true end
+	if i == 5 then return BASIC[kind] or READ5[kind] or READ56[kind] or false end
+	if i == 6 then return READ56[kind] or READ6[kind] or false end
+	return false
+end
+local UNREAD = { n = 0 }
+local AS_FULL = { RUN = { "MASH", "LR" }, MASH2 = { "MASH", "B1B2" }, LOOPLEFT = { "LOOP", '"L,+,1"' }, LOOPRIGHT = { "LOOP", '"R,-,1"' },
+	DOUBLE = { "MULTI", '"B1,B1"' }, UD = { "MULTI", '"U,D"' }, DU = { "MULTI", '"D,U"' }, LR = { "MULTI", '"L,R"' }, RL = { "MULTI", '"R,L"' } }
+
+local BYVALUE = {}
+do
+	local all = {}
+	for _, n in ipairs(DIR_ORDER) do all[#all + 1] = n end
+	for _, n in ipairs(PLAIN) do all[#all + 1] = n end
+	for _, n in ipairs(OTHER) do all[#all + 1] = n end
+	for _, n in ipairs(all) do
+		if C[n] ~= nil and BYVALUE[C[n]] == nil then BYVALUE[C[n]] = DIR_NAMES[n] or n end
+	end
+	for _, n in ipairs({ "UP", "DOWN", "LEFT", "RIGHT", "UPLEFT", "UPRIGHT", "DOWNLEFT", "DOWNRIGHT" }) do BYVALUE[C[n]] = n end
+	BYVALUE[C.BUTTON1], BYVALUE[C.BUTTON2], BYVALUE[C.BUTTON3] = "B1", "B2", "B3"
+end
+
+local ENV = {}
+local MODERN = false
+local SHORT = { U = true, D = true, L = true, R = true, UL = true, UR = true, DL = true, DR = true, B1 = true, B2 = true, B3 = true }
+local function modernSpec(kind, s)
+	local parts = splitPlain(s, ",")
+	if kind == "MULTI" then
+		if #parts < 2 then return nil end
+		for _, p in ipairs(parts) do if not SHORT[p] then return nil end end
+		return table.concat(parts, " ")
+	end
+	if #parts ~= 3 and #parts ~= 4 then return nil end
+	local st, way, dist, b = parts[1], ({ ["+"] = "CW", ["-"] = "CCW" })[parts[2]], parts[3], parts[4]
+	if not (st == "U" or st == "D" or st == "L" or st == "R") or not way then return nil end
+	if not (dist == "Q" or dist == "H" or dist:match("^[1-9]$")) then return nil end
+	if b and not (b == "B1" or b == "B2" or b == "B3") then return nil end
+	return st .. " " .. dist .. " " .. way .. (b and (" " .. b) or "")
+end
+local loadstr = loadstring or load
+
+local function num(text)
+	local ok, v = pcall(value, text)
+	if ok and type(v) == "number" then return v end
+	if not ok and not isNP(v) then error(v, 0) end
+	local expr = strip(text)
+	if not expr:match("^[%w_%s%.%+%-%*/%(%)]+$") then notplain('value "' .. expr .. '"') end
+	local e = expr
+	while e:find("--", 1, true) do e = e:gsub("%-%-", "- -") end
+	local f = loadstr("return " .. e)
+	if not f then notplain('value "' .. expr .. '"') end
+	setfenv(f, setmetatable({}, { __index = function(_, k)
+		local x = ENV[k]
+		if x == nil then x = C[k] end
+		if x == nil then error("name", 0) end
+		return x
+	end }))
+	local ok2, r = pcall(f)
+	if not ok2 or type(r) ~= "number" then notplain('value "' .. expr .. '"') end
+	return r + 0
+end
+
+local function move_name(text)
+	local t = strip(text)
+	if DIR_NAMES[t] then return DIR_NAMES[t] end
+	if PLAINSET[t] or OTHERSET[t] then return t end
+	local v = num(t)
+	if BYVALUE[v] then return BYVALUE[v] end
+	notplain('move "' .. t .. '"')
+end
+
+local function dir_name(text)
+	local n = move_name(text)
+	if not BASIC[n] then notplain('direction "' .. text .. '"') end
+	return n
+end
+
+local function fmt_num(v)
+	if type(v) == "number" then
+		return (string.format("%.3f", v + 0):gsub("0+$", ""):gsub("%.$", ""))
+	elseif v == nil then return "None"
+	elseif v == true then return "True"
+	elseif v == false then return "False" end
+	return tostring(v)
+end
+
+local function pystr(v)
+	if type(v) == "number" then
+		if isint(v) then return string.format("%d", v) end
+		return tostring(v)
+	end
+	return fmt_num(v)
+end
+
+local function death_word(d)
+	local w = ({ [-1] = "optional", [-2] = "scored", [-3] = "hidden", [0] = "random" })[d]
+	return w or pystr(d)
+end
+
+local function clean_comment(c)
+	c = strip(c or "")
+	while starts(c, "--") do c = strip(c:sub(3)) end
+	return c
+end
+
+local GAME_DEFAULTS = {
+	SCOREMOVE = "700", BUFFMOVE = "300", SCORESCENE = "5000", SCORELEVEL = "20000",
+	SCOREGAME = "100000", PERFECTBONUS = "10000", EXTRALIFE = "0", DEATHPENALTY = "1000",
+	SCORESECRET = "1", miscR = "153", miscG = "76", miscB = "0",
+	AllowRandom = "no", AllowMap = "no", MapStart = "1", LvlTrophy3 = "0", LvlTrophy4 = "0",
+	PenalNormal = "0", PenalHard = "2", PenalExtreme = "4", IngameDiffchoice = "no",
+	RelativeFrames = "no", altCfg = "no", ForceRewind = "no", pathLook = "2",
+	AllowNormal = "yes", AllowLifeBar = "yes", AllowPercent = "yes", AllowSurvivor = "yes",
+	AllowKid = "yes", AllowDie = "yes", bShowFrame = "yes",
+	BarSize = "10", BarMin = "2", BarBonus = "3",
+}
+local GAME_DROP = { bAddons = true }
+local CLIP_DEFAULTS = { GetReady = "0 - 1", SupDeath = "0 - 1", Clear = "0 - 1", Map = "0 - 1", IntroGame = "0 - 0" }
+local MENU_DEFAULTS = { Secret = "0", Trophy = "0" }
+
+local function want(targets, n, t)
+	if isint(t) and t > 0 and t < 1000 then
+		if t > n then notplain("jump to move " .. t .. " of " .. n) end
+		targets[t] = true
+	end
+end
+
+local function sfmt(...) return string.format(...) end
+
+local function scene_rows(sc, level_base, counter, is_last_scene)
+	local out = {}
+	local moves = sc.moves
+	local n = nkeys(moves)
+	local OUT = C.OUT
+	local infos, targets, timed_used = {}, {}, {}
+	local function W(t) want(targets, n, t) end
+	for k = 1, n do
+		local fields = moves[k][1]
+		NPCTX = (SCENECTX or "") .. "move " .. (fields[1] and fields[2] and (strip(fields[1]) .. "-" .. strip(fields[2])) or ("[" .. k .. "]"))
+		if #fields < 3 then notplain("move[" .. k .. "] too short") end
+		local kind = move_name(fields[3])
+		local last = 4
+		for i = 5, #fields do
+			if reads(kind, i) and strip(fields[i]) ~= "nil" then last = i end
+		end
+		if #fields > last then
+			local kept_ = {}
+			for i = 1, last do kept_[i] = fields[i] end
+			for i = last + 1, #fields do
+				if strip(fields[i]) ~= "nil" then
+					UNREAD.n = UNREAD.n + 1
+					if not UNREAD.first then UNREAD.first = "Level[" .. tostring(LEVELCTX) .. "] " .. NPCTX .. " " .. kind .. ", value " .. i end
+				end
+			end
+			fields = kept_
+		end
+		local rkind = kind
+		if AS_FULL[kind] and #fields >= 6 then
+			local full = {}
+			for i = 1, #fields do full[i] = fields[i] end
+			if strip(full[5]) ~= "nil" then
+				UNREAD.n = UNREAD.n + 1
+				if not UNREAD.first then UNREAD.first = "Level[" .. tostring(LEVELCTX) .. "] " .. NPCTX .. " " .. kind .. ", value 5" end
+			end
+			full[3], full[5] = AS_FULL[kind][1], AS_FULL[kind][2]
+			fields, kind = full, AS_FULL[kind][1]
+		end
+		local info = { kind = kind, a = num(fields[1]), b = num(fields[2]), f = fields, ctx = NPCTX }
+		if #fields > 3 then info.death = num(fields[4]) end
+		local extra = {}
+		for i = 5, #fields do extra[#extra + 1] = fields[i] end
+		if kind == "PATH" then
+			local pairs_, join = {}, nil
+			if #extra > 0 and type(value(extra[1])) == "string" then
+				local s = value(extra[1])
+				local parts = {}
+				for _, x in ipairs(splitPlain(s, ",")) do parts[#parts + 1] = strip(x) end
+				if #parts % 2 == 1 then notplain('PATH string "' .. s .. '"') end
+				for i = 1, #parts, 2 do
+					local d = STRING_DIRS[parts[i]:upper()]
+					if d == nil then notplain('PATH string "' .. s .. '"') end
+					local t = parts[i + 1]:match("^[%+%-]?%d+$") and tonumber(parts[i + 1])
+					if not t then fatal("invalid literal for int(): " .. parts[i + 1]) end
+					pairs_[#pairs_ + 1] = { d, t }
+				end
+				join = (#extra > 1) and num(extra[2]) or OUT
+				if #extra > 2 then notplain("PATH with " .. #fields .. " fields") end
+				if sc.path[k] then notplain("PATH string and path[" .. k .. "]") end
+			else
+				if #extra > 0 then notplain("PATH with extra fields") end
+				if not sc.path[k] then notplain("PATH without path[" .. k .. "]") end
+				local pf = sc.path[k][1]
+				if #pf ~= 8 and #pf ~= 9 then notplain("path[" .. k .. "] has " .. #pf .. " values") end
+				for i = 1, 8, 2 do
+					local dv = num(pf[i])
+					if dv ~= 0 then pairs_[#pairs_ + 1] = { dir_name(pf[i]), num(pf[i + 1]) } end
+				end
+				join = (#pf == 9) and num(pf[9]) or 0
+			end
+			info.pairs, info.join, info.out = pairs_, join, join == OUT
+			for _, p in ipairs(pairs_) do if not info.out then W(p[2]) end end
+			W(join)
+			info.changes = {}
+			for lvl, ov in pairs(sc.ov_moves[k] or {}) do
+				local ch = { cond = ov.cond, lines = {} }
+				if ov.path then
+					local pf2 = ov.path
+					if #pf2 ~= 8 and #pf2 ~= 9 then notplain("difficulty path length") end
+					local pairs2 = {}
+					for i = 1, 8, 2 do
+						if num(pf2[i]) ~= 0 then pairs2[#pairs2 + 1] = { dir_name(pf2[i]), num(pf2[i + 1]) } end
+					end
+					local same = #pairs2 == #pairs_
+					if same then for i = 1, #pairs_ do if pairs2[i][1] ~= pairs_[i][1] then same = false end end end
+					if not same then notplain("difficulty changes the PATH directions") end
+					local j2 = (#pf2 == 9) and num(pf2[9]) or 0
+					if (j2 == OUT) ~= (join == OUT) then notplain("difficulty changes a PATH from moves to scenes") end
+					for i = 1, #pairs_ do
+						local d, t, t2 = pairs_[i][1], pairs_[i][2], pairs2[i][2]
+						if t ~= t2 then
+							ch.lines[#ch.lines + 1] = { "dir", d, t2 }
+							if join ~= OUT then W(t2) end
+						end
+					end
+					if j2 ~= join then
+						ch.lines[#ch.lines + 1] = { "go", j2 }
+						W(j2)
+					end
+				end
+				for _, i in ipairs(sortedKeys(ov.pos)) do
+					if i == 4 then ch.lines[#ch.lines + 1] = { "death", num(ov.pos[i]) }
+					elseif reads(rkind, i) then notplain("difficulty changes field " .. i) end
+				end
+				info.changes[lvl] = ch
+			end
+		elseif kind == "YESNO" then
+			if #extra > 0 and type(value(extra[1])) == "string" then notplain("YESNO string form") end
+			if #extra > 0 then notplain("YESNO with extra fields") end
+			if not sc.path[k] then notplain("YESNO without path") end
+			local pf = {}
+			for _, x in ipairs(sc.path[k][1]) do pf[#pf + 1] = num(x) end
+			if #pf ~= 3 then notplain("YESNO path of " .. #pf) end
+			info.yes, info.no, info.join = pf[1], pf[2], pf[3]
+			info.out = info.join == OUT
+			for _, t in ipairs(pf) do if not info.out or t == pf[3] then W(t) end end
+		elseif kind == "TIMED" then
+			local i, j
+			if #fields >= 6 then
+				i, j = num(fields[5]), num(fields[6])
+				if #fields > 6 then notplain("TIMED with more fields") end
+			elseif #fields == 5 then
+				notplain("TIMED with one timed number")
+			else
+				i, j = k, k
+			end
+			local wins = {}
+			for t = i, j do
+				if not sc.timed[t] or timed_used[t] then notplain("timed[" .. t .. "]") end
+				timed_used[t] = true
+				local tf = sc.timed[t][1]
+				if #tf ~= 4 and #tf ~= 5 then notplain("timed[" .. t .. "] has " .. #tf .. " values") end
+				local w = { dir = dir_name(tf[1]), a = num(tf[2]), b = num(tf[3]), death = num(tf[4]), comment = clean_comment(sc.timed[t][2]) }
+				if #tf == 5 then
+					w.to = num(tf[5])
+					if w.to > 0 then W(w.to) end
+				end
+				wins[#wins + 1] = w
+			end
+			info.windows = wins
+		elseif kind == "CHOOSE" then
+			local cs = sc.choice
+			local ncs = nkeys(cs)
+			if not oneToN(cs, ncs) or ncs == 0 then notplain("CHOOSE choices") end
+			if info.death ~= ncs then notplain("CHOOSE shows " .. tostring(info.death) .. " of " .. ncs .. " choices") end
+			local chs = {}
+			for ci = 1, ncs do
+				local cf = cs[ci][1]
+				if #cf ~= 3 and #cf ~= 5 then notplain("choice with " .. #cf .. " values") end
+				local text = value(cf[1])
+				local right = value(cf[2])
+				local v3 = num(cf[3])
+				if tostring(text):find('"', 1, true) then notplain("quote in a choice") end
+				local ch = { text = text, right = right, v = v3, comment = clean_comment(cs[ci][2]) }
+				if #cf == 5 then
+					if not truthy(right) then notplain("wrong choice with 5 values") end
+					ch.stop, ch.join = num(cf[4]), num(cf[5])
+				end
+				chs[#chs + 1] = ch
+				if truthy(right) and v3 > 0 then W(v3) end
+			end
+			info.choices = chs
+			local br = {}
+			for _, c in ipairs(chs) do if c.stop ~= nil then br[#br + 1] = c end end
+			info.join = nil
+			if #br > 0 then
+				local j = br[1].join
+				for _, c in ipairs(br) do if c.join ~= j then notplain("CHOOSE branches with different joins") end end
+				local tg = {}
+				for _, c in ipairs(chs) do if truthy(c.right) and c.v > 0 then tg[#tg + 1] = c.v end end
+				for _, c in ipairs(chs) do
+					if truthy(c.right) and c.v > 0 then
+						local nxt
+						for _, t in ipairs(tg) do if t > c.v and (nxt == nil or t < nxt) then nxt = t end end
+						if c.stop == nil or c.stop ~= (nxt ~= nil and nxt or j) - 1 then notplain("CHOOSE branch ends the sheet cannot compute") end
+					end
+				end
+				info.join = j
+				W(j)
+			end
+			if #fields > 6 then notplain("CHOOSE fields") end
+			info.title = nil
+			if #fields >= 5 and strip(fields[5]) ~= "nil" then
+				local v5 = value(fields[5])
+				if type(v5) ~= "string" or v5:find('"', 1, true) then notplain("CHOOSE title") end
+				info.title = v5
+			end
+			info.timer = (#fields == 6) and num(fields[6]) or nil
+		elseif kind == "WAY" then
+			if #extra > 0 then notplain("WAY extra") end
+			W(info.death)
+		elseif kind == "SKIP" and #extra > 0 then
+			local v5 = value(extra[1])
+			if #extra > 1 or type(v5) ~= "string" or v5:find('"', 1, true) then notplain("SKIP fields") end
+			info.text = v5
+		elseif kind == "NOTHING" and #extra > 0 then
+			if #extra > 1 then notplain("NOTHING option") end
+			local o = num(extra[1])
+			if o ~= 1 and o ~= 2 then notplain("NOTHING option") end
+			info.nothing = num(extra[1])
+		elseif kind == "WAYOUT" or kind == "TOSCENE" or kind == "TOLEVEL" or kind == "SKIP" or kind == "LETGO"
+			or kind == "ANYTHING" or kind == "NOTHING" or PLAINSET[kind] then
+			if #extra > 0 then notplain(kind .. " with extra fields") end
+		end
+		if kind ~= "PATH" and sc.ov_moves[k] and next(sc.ov_moves[k]) then
+			info.changes = {}
+			for lvl, ov in pairs(sc.ov_moves[k]) do
+				if ov.path then notplain("path change on a " .. kind) end
+				local ch = { cond = ov.cond, lines = {} }
+				for _, i in ipairs(sortedKeys(ov.pos)) do
+					if i == 4 then ch.lines[#ch.lines + 1] = { "death", num(ov.pos[i]) }
+					elseif reads(rkind, i) then notplain("difficulty changes field " .. i) end
+				end
+				info.changes[lvl] = ch
+			end
+		end
+		infos[k] = info
+	end
+	NPCTX = SCENECTX and SCENECTX:sub(1, -3) or nil
+	for t in pairs(sc.timed) do if not timed_used[t] then notplain("timed unused") end end
+	for k in pairs(sc.path) do
+		if not moves[k] or (infos[k].kind ~= "PATH" and infos[k].kind ~= "YESNO") then
+			notplain("path[" .. k .. "] on a move that is not a PATH")
+		end
+	end
+	if next(sc.choice) then
+		local any = false
+		for _, i in pairs(infos) do if i.kind == "CHOOSE" then any = true end end
+		if not any then notplain("choices without CHOOSE") end
+	end
+
+	local names = {}
+	for _, k in ipairs(sortedKeys(targets)) do
+		counter[1] = counter[1] + 1
+		names[k] = level_base .. (counter[1] > 1 and tostring(counter[1]) or "")
+	end
+
+	local function tgt(t, isOut)
+		if t == OUT then return "end" end
+		if t > 1000 then return sfmt("death %d", t - 1000) end
+		if t == 0 then return "next" end
+		if isOut then return sfmt(is_last_scene and "level %d" or "scene %d", t) end
+		if names[t] == nil then fatal("KeyError: " .. pystr(t)) end
+		return names[t]
+	end
+	local function cond_text(cond)
+		if not cond then return "" end
+		return sfmt("   %s level %s beaten", cond[1] == "ifnotbeaten" and "until" or "if", cond[2])
+	end
+
+	out[#out + 1] = sfmt("  SCENE %s - %s", fmt_num(num(sc.start[2])), fmt_num(num(sc.stop[2])))
+	for _, lvl in ipairs(sortedKeys(sc.ov_scene)) do
+		local ov = sc.ov_scene[lvl]
+		local items = {}
+		if ov.start then items[#items + 1] = "start " .. fmt_num(num(ov.start)) end
+		if ov.finish then items[#items + 1] = "finish " .. fmt_num(num(ov.finish)) end
+		out[#out + 1] = sfmt("    %s: %s%s", DIFF_NAMES[lvl], table.concat(items, "   "), cond_text(ov.cond))
+	end
+
+	for k = 1, n do
+		local info = infos[k]
+		NPCTX = info.ctx
+		local fields = info.f
+		local kind = info.kind
+		local d = info.death
+		local comment = clean_comment(moves[k][2])
+		if sc.path[k] and sc.path[k][2] ~= "" then comment = strip(comment .. " " .. clean_comment(sc.path[k][2])) end
+		for _, note in ipairs(sc.before[k] or {}) do out[#out + 1] = "      # " .. clean_comment(note) end
+		local detail, spec = "", ""
+		if BASIC[kind] then
+			if #fields > 5 then notplain("basic move with " .. #fields .. " fields") end
+			if #fields == 5 then spec = "or " .. dir_name(fields[5]) end
+			detail = death_word(d)
+		elseif PLAINSET[kind] then
+			if truthy(info.nothing) then spec = info.nothing == 1 and "silent" or "blind" end
+			detail = death_word(d)
+		elseif kind == "COMBO" then
+			if #fields ~= 6 then notplain("COMBO fields") end
+			spec = dir_name(fields[5]) .. " + " .. dir_name(fields[6])
+			detail = death_word(d)
+		elseif kind == "HOLD" then
+			if #fields ~= 5 and #fields ~= 6 then notplain("HOLD fields") end
+			spec = dir_name(fields[5])
+			detail = death_word(d)
+		elseif kind == "MASH" then
+			local parts = {}
+			if #fields > 4 then
+				local t5 = strip(fields[5])
+				local kinds = {}
+				local kindNames = {}
+				for _, k_ in ipairs({ "B1B2", "UD", "DU", "LR", "RL" }) do kinds[C[k_]] = k_; kindNames[k_] = true end
+				if kindNames[t5] then
+					parts[#parts + 1] = t5
+				else
+					local v = num(t5)
+					if kinds[v] then parts[#parts + 1] = kinds[v] else parts[#parts + 1] = dir_name(t5) end
+				end
+			end
+			if #fields > 5 then
+				local v = num(fields[6])
+				parts[#parts + 1] = (v >= 0) and sfmt("harder %d", v) or sfmt("easier %d", -v)
+			end
+			if #fields > 6 then notplain("MASH fields") end
+			spec = table.concat(parts, " ")
+			detail = death_word(d)
+		elseif kind == "MULTI" or kind == "LOOP" then
+			if #fields < 5 or #fields > 6 then notplain(kind .. " fields") end
+			local v5
+			if fields[5]:match('^%s*"') then v5 = value(fields[5]) end
+			if type(v5) == "string" then
+				if v5:find('"', 1, true) then notplain("quote") end
+				spec = MODERN and modernSpec(kind, v5) or ('"' .. v5 .. '"')
+				if #fields == 6 then spec = spec .. " after " .. fmt_num(num(fields[6])) end
+			elseif kind == "MULTI" and #fields == 6 then
+				spec = sfmt("%s x%d", dir_name(fields[5]), num(fields[6]))
+			else
+				notplain(kind .. " form")
+			end
+			detail = death_word(d)
+		elseif kind == "PATH" or kind == "YESNO" or kind == "TIMED" then
+			detail = death_word(d)
+		elseif kind == "CHOOSE" then
+			local parts = {}
+			if info.title ~= nil then parts[#parts + 1] = '"' .. info.title .. '"' end
+			if info.timer ~= nil then parts[#parts + 1] = "timer " .. fmt_num(info.timer) end
+			spec = table.concat(parts, "   ")
+		elseif kind == "SKIP" then
+			local parts = (d == -3) and { "hidden" } or {}
+			if info.text ~= nil then parts[#parts + 1] = '"' .. info.text .. '"' end
+			spec = table.concat(parts, "   ")
+		elseif kind == "WAY" then
+			detail = (truthy(d) and d > 0) and ("> " .. tgt(d)) or ""
+		elseif kind == "WAYOUT" then
+			kind = "EXIT"
+			if d ~= 0 then detail = sfmt(is_last_scene and "> level %d" or "> scene %d", d) end
+		elseif kind == "TOSCENE" then
+			if d > 0 then kind, detail = "EXIT", sfmt("> scene %d", d) else detail = pystr(d) end
+		elseif kind == "TOLEVEL" then
+			if d > 0 then kind, detail = "EXIT", sfmt("> level %d", d)
+			elseif d == 0 then kind, detail = "EXIT", "> next level"
+			else detail = pystr(d) end
+		end
+		local phrase = (spec ~= "") and (kind .. " " .. spec) or kind
+		local line
+		if spec == "" and #phrase <= 8 then
+			line = sfmt("      %6s - %-6s  %-8s %s", fmt_num(info.a), fmt_num(info.b), phrase, detail)
+		else
+			line = sfmt("      %6s - %-6s  %s   %s", fmt_num(info.a), fmt_num(info.b), phrase, detail)
+		end
+		out[#out + 1] = { move = true, line = rstrip(line), name = names[k], comment = comment }
+		if kind == "PATH" then
+			for _, p in ipairs(info.pairs) do out[#out + 1] = sfmt("          %-6s > %s", p[1], tgt(p[2], info.out)) end
+			if info.join ~= 0 and info.join ~= OUT then out[#out + 1] = "          go     > " .. tgt(info.join) end
+		elseif kind == "YESNO" then
+			out[#out + 1] = "          yes    > " .. tgt(info.yes, info.out)
+			out[#out + 1] = "          no     > " .. tgt(info.no, info.out)
+			if info.join ~= 0 and info.join ~= OUT then out[#out + 1] = "          go     > " .. tgt(info.join) end
+		elseif kind == "TIMED" then
+			local lefts, width = {}, 0
+			for _, w in ipairs(info.windows) do
+				local left = sfmt("          %-6s %6s - %-6s", w.dir, fmt_num(w.a), fmt_num(w.b))
+				if w.to ~= nil then left = rstrip(left) .. "   > " .. (w.to == 0 and "skip" or tgt(w.to)) end
+				left = rstrip(left)
+				lefts[#lefts + 1] = left
+				if #left > width then width = #left end
+			end
+			for i, w in ipairs(info.windows) do
+				local s = ljust(lefts[i], width) .. "   " .. death_word(w.death)
+				if w.comment ~= "" then s = s .. "   # " .. w.comment end
+				out[#out + 1] = s
+			end
+		elseif kind == "CHOOSE" then
+			for _, ch in ipairs(info.choices) do
+				local txt = '"' .. tostring(ch.text) .. '"'
+				local s
+				if truthy(ch.right) then
+					s = sfmt("          %-34s right", txt)
+					if ch.v > 0 then s = s .. " > " .. tgt(ch.v) end
+				else
+					s = sfmt("          %-34s %s", txt, death_word(ch.v))
+				end
+				if ch.comment ~= "" then s = s .. "   # " .. ch.comment end
+				out[#out + 1] = s
+			end
+			if truthy(info.join) then out[#out + 1] = "          go     > " .. tgt(info.join) end
+		end
+		for _, lvl in ipairs(sortedKeys(info.changes or {})) do
+			local ch = info.changes[lvl]
+			local items = {}
+			for _, it in ipairs(ch.lines) do
+				if it[1] == "dir" then items[#items + 1] = it[2] .. " > " .. tgt(it[3], info.out or false)
+				elseif it[1] == "go" then
+					if it[2] ~= OUT then items[#items + 1] = "go > " .. tgt(it[2]) end
+				elseif it[1] == "death" then items[#items + 1] = death_word(it[2]) end
+			end
+			if #items > 0 or ch.cond then
+				out[#out + 1] = sfmt("          %s: %s%s", DIFF_NAMES[lvl], table.concat(items, "   "), cond_text(ch.cond))
+			end
+		end
+	end
+	for _, note in ipairs(sc.notes) do out[#out + 1] = "      # " .. clean_comment(note) end
+	local res = {}
+	for _, x in ipairs(out) do
+		if type(x) == "table" then
+			local t = x.line
+			if x.name then t = t .. "   " .. x.name end
+			if x.comment ~= "" then t = t .. "   # " .. x.comment end
+			res[#res + 1] = rstrip(t)
+		else
+			res[#res + 1] = x
+		end
+	end
+	return res
+end
+
+local SECTIONS = { GAME = true, CLIPS = true, ["MENU FRAMES"] = true }
+
+local function prettyRow(l)
+	local g1 = l:match("^(  %S+%s+)")
+	if not g1 then return nil end
+	local rest = l:sub(#g1 + 1)
+	for p = 1, #rest do
+		local c3 = rest:sub(p):match("^%s+(#.*)$")
+		if c3 then return g1, rest:sub(1, p - 1), c3 end
+	end
+	return g1, rest, nil
+end
+
+local function pretty(out)
+	local res = {}
+	for _, l in ipairs(out) do
+		if l:match("^%s*SCENE%f[^%w_]") and #res > 0 and strip(res[#res]) ~= "" then res[#res + 1] = "" end
+		res[#res + 1] = l
+		if l == "Sheet [[" then res[#res + 1] = "" end
+	end
+	local i = 1
+	while i <= #res do
+		local t = strip(res[i])
+		if SECTIONS[t] then
+			local j = i + 1
+			while j <= #res and strip(res[j]) ~= "" and not SECTIONS[strip(res[j])] and strip(res[j]) ~= "DEATHS"
+				and strip(res[j]) ~= "TIERS" and not starts(res[j], "LEVEL") do j = j + 1 end
+			local rows, width = {}, 0
+			for k = i + 1, j - 1 do
+				local g1, g2, g3 = prettyRow(res[k])
+				rows[#rows + 1] = { k, g1, g2, g3 }
+				if g1 and #g2 > width then width = #g2 end
+			end
+			width = width + (t == "MENU FRAMES" and 2 or 3)
+			for _, r in ipairs(rows) do
+				if r[2] and r[4] then res[r[1]] = r[2] .. ljust(r[3], width) .. r[4] end
+			end
+			i = j
+		else
+			i = i + 1
+		end
+	end
+	return res
+end
+
+local function subFirstIf(line, kw)
+	local pos = 1
+	while true do
+		local s, e = line:find("[%w_]+", pos)
+		if not s then return line end
+		local w = line:sub(s, e)
+		if w == "if" or w == "elseif" then return line:sub(1, s - 1) .. kw .. line:sub(e + 1) end
+		pos = e + 1
+	end
+end
+
+local function readAddonsDiff(gameDir)
+	if not gameDir then return nil end
+	local h = io.open(gameDir .. "Script/addons.kimmy", "rb")
+	if not h then return nil end
+	local s = h:read("*a")
+	h:close()
+	for l in (s .. "\n"):gmatch("([^\n]*)\n") do
+		if l:match("^%s*IngameDiffchoice%s*=%s*true") then return true end
+		if l:match("^%s*IngameDiffchoice%s*=%s*false") then return false end
+	end
+	return nil
+end
+
+local function nameValue(full)
+	local name, rest = full:match("^([%a_][%w_]*%[[^%]]+%])%s*=%s*(.*)$")
+	if not name then name, rest = full:match("^([%a_][%w_]*)%s*=%s*(.*)$") end
+	if not name or rest == "" then return nil end
+	if rest:sub(-1) == ";" and #rest >= 2 then rest = rest:sub(1, -2) end
+	return name, rest
+end
+
+local function convert(raw, gameDir)
+	ENV = {}
+	UNREAD.n, UNREAD.first = 0, nil
+	NPCTX, SCENECTX = nil, nil
+	local eol = raw:find("\r\n", 1, true) and "\r\n" or "\n"
+	local lines = splitPlain((raw:gsub("\r\n", "\n")), "\n")
+	local report = {}
+
+	local header = {}
+	local i = 1
+	while i <= #lines and strip(lines[i]) == "" do i = i + 1 end
+	if i <= #lines and starts((lines[i]:gsub("^" .. WS .. "+", "")), "--[[") then
+		while i <= #lines do
+			header[#header + 1] = lines[i]
+			local part = lines[i]
+			if #header == 1 then
+				local p = part:find("--[[", 1, true)
+				part = part:sub(p + 4)
+			end
+			local closed = part:find("]]", 1, true) ~= nil
+			i = i + 1
+			if closed then break end
+		end
+	end
+	local body_start = i
+
+	local fs, fe = find_function(lines, "setupMoves")
+	local stmts, leftover = {}, {}
+	local in_fn, depth = false, 0
+	local j = body_start
+	while j <= #lines do
+		local l = lines[j]
+		if fs and j >= fs and j <= fe then
+		else
+			local code, comment = strip_code(l)
+			if in_fn or code:match("^%s*function%f[^%w_]") or code:match("^%s*local%s+function%f[^%w_]") then
+				depth = depth + depth_delta(code)
+				leftover[#leftover + 1] = l
+				in_fn = depth > 0
+			else
+				local s = strip(code)
+				if s ~= "" then
+					local full = strip((comment ~= "") and l:sub(1, #l - #comment) or l)
+					local isGlobals = false
+					local g = full:match('^dofile%s*%(%s*["\'][^"\']*globals%.(%a+)["\']%s*%)%s*;?$')
+					if g == "singe" or g == "kimmy" then isGlobals = true end
+					if not isGlobals then
+						local name, val = nameValue(full)
+						local tail = rstrip(code):gsub(";+$", "")
+						if name and count(code, "{") == count(code, "}") and not tail:find(";", 1, true) then
+							stmts[#stmts + 1] = { j, name, strip(val), clean_comment(comment) }
+						else
+							leftover[#leftover + 1] = l
+						end
+					end
+				end
+			end
+		end
+		j = j + 1
+	end
+
+	local names_order, simple = {}, {}
+	for _, st in ipairs(stmts) do
+		local name, val, com = st[2], st[3], st[4]
+		if not name:find("[", 1, true) then
+			local t = val
+			if t == "true" or t == "false" then
+				simple[name] = { t == "true", com, val }
+			elseif t:match('^"[^"\\]*"$') then
+				simple[name] = { t:sub(2, -2), com, val }
+			elseif starts(t, "{") then
+				simple[name] = { t, com, val }
+			else
+				local ok, v = pcall(num, t)
+				if ok then
+					ENV[name] = v
+					simple[name] = { v, com, val }
+				elseif isNP(v) then
+					simple[name] = { nil, com, val }
+				else
+					error(v, 0)
+				end
+			end
+			names_order[#names_order + 1] = name
+		end
+	end
+
+	local out = { "Sheet [[" }
+
+	local deaths = {}
+	for _, st in ipairs(stmts) do
+		local dn = st[2]:match("^Death%[%s*(%d+)%s*%]$")
+		if dn then
+			local v = strip(st[3])
+			local f = starts(v, "{") and split_fields(v:sub(2, -2)) or nil
+			if not f or #f ~= 2 then fatal("Death[" .. dn .. "] not {start, end}") end
+			deaths[tonumber(dn)] = { num(f[1]), num(f[2]), st[4] }
+		end
+	end
+	local ndeaths = nkeys(deaths)
+	if ndeaths > 0 and not oneToN(deaths, ndeaths) then fatal("deaths not numbered 1..n") end
+
+	local tiers = {}
+	for _, st in ipairs(stmts) do
+		local tn = st[2]:match("^Tiers%[%s*(%d+)%s*%]$")
+		if tn then
+			local v = strip(st[3])
+			local l = {}
+			for _, x in ipairs(split_fields(v:sub(2, -2))) do l[#l + 1] = num(x) end
+			tiers[tonumber(tn)] = l
+		end
+	end
+	local tiers_ok = false
+	local ntiers = nkeys(tiers)
+	if ntiers > 0 then
+		local n = ntiers - 1
+		local ok = tiers[0] ~= nil
+		for t = 0, n do if tiers[t] == nil then ok = false end end
+		if ok then
+			local want_ = { n }
+			for t = 1, n do want_[#want_ + 1] = #tiers[t] end
+			ok = eqv(tiers[0], want_)
+		end
+		if ok then tiers_ok = true else report[#report + 1] = "Tiers kept in Lua (Tiers[0] does not match the lists)" end
+	end
+
+	local level_lines = {}
+	for _, st in ipairs(stmts) do
+		local key = st[2]:match("^Level%[%s*([^%]]-)%s*%]$")
+		if key and key ~= "" then level_lines[key] = { st[1], st[3], st[4] } end
+	end
+	local numkeys = {}
+	for k in pairs(level_lines) do if k:match("^%d+$") then numkeys[tonumber(k)] = true end end
+	local default_final = 0
+	while numkeys[default_final + 1] do default_final = default_final + 1 end
+
+	local blocks = {}
+	if fs then
+		local mlines = {}
+		for x = 1, #lines do mlines[x] = lines[x] end
+		local k = fs + 1
+		while k < fe do
+			local p = mlines[k]:find("--[[", 1, true)
+			if p and strip(mlines[k]:sub(1, p - 1)) == "" then
+				local c1 = mlines[k]:sub(p + 4)
+				local jj = k
+				while jj < fe and not ((jj == k) and c1 or mlines[jj]):find("]]", 1, true) do jj = jj + 1 end
+				for x = k, math.min(jj, fe - 1) do mlines[x] = "" end
+				k = jj + 1
+			else
+				k = k + 1
+			end
+		end
+		local stray
+		blocks, stray = parse_chain(mlines, fs + 1, fe, "thisLevel")
+		if #stray > 0 then fatal('setupMoves has code outside "if thisLevel ==" (line ' .. stray[1] .. ")") end
+	end
+	local level_out, kept = {}, {}
+	local relSeen, relBefore = 0, 0
+	for _, blk in ipairs(blocks) do
+		local key, a, b = blk[1], blk[2], blk[3]
+		local un, uf = UNREAD.n, UNREAD.first
+		NPCTX, SCENECTX, LEVELCTX = nil, nil, key
+		local ok, err = pcall(function()
+			if not level_lines[key] then notplain("no Level[" .. key .. "] line") end
+			local idx, val, lcom = level_lines[key][1], level_lines[key][2], level_lines[key][3]
+			local hdr = split_fields(strip(val):sub(2, -2))
+			if #hdr < 7 or #hdr > 8 then notplain("Level[" .. key .. "] has " .. #hdr .. " fields") end
+			local title = value(hdr[1])
+			if type(title) ~= "string" then notplain("title") end
+			local nsc = num(hdr[4])
+			local scenes_blk, stray2 = parse_chain(lines, a, b + 1, "thisScene")
+			if #stray2 > 0 then notplain('code outside "if thisScene ==" (line ' .. stray2[1] .. ")") end
+			local scenes = {}
+			for _, sb in ipairs(scenes_blk) do
+				local s_ = num(sb[1])
+				if scenes[s_] then notplain("scene " .. sb[1] .. " twice") end
+				NPCTX = (#scenes_blk > 1) and ("scene " .. sb[1]) or nil
+				scenes[s_] = parse_scene(lines, sb[2], sb[3])
+				NPCTX = nil
+			end
+			if not (isint(nsc) and oneToN(scenes, nsc)) then notplain("Level line says " .. hdr[4] .. " scenes") end
+			local base = (title:match("^[A-Za-z']+") or ""):gsub("'", ""):lower()
+			if base == "" then base = "move" end
+			local counter = { 0 }
+			local lo = {}
+			local keytxt = (key == "levelSecret" or key == "1000") and "SECRET" or key
+			if (lcom or ""):find("Start Frame", 1, true) or (lcom or ""):find("Each level has one line", 1, true) then lcom = "" end
+			lo[#lo + 1] = sfmt("LEVEL %s   %s%s", keytxt, title, (lcom ~= "") and ("   # " .. lcom) or "")
+			local opts = sfmt("intro %s - %s", fmt_num(num(hdr[2])), fmt_num(num(hdr[3])))
+			local replay = num(hdr[7])
+			if replay ~= -1 then opts = opts .. "   replay " .. fmt_num(replay) end
+			if num(hdr[5]) ~= 0 then opts = opts .. "   mirror " .. fmt_num(num(hdr[5])) end
+			if num(hdr[6]) ~= 0 then opts = opts .. "   deathmirror " .. fmt_num(num(hdr[6])) end
+			if #hdr == 8 then opts = opts .. "   image " .. fmt_num(num(hdr[8])) end
+			lo[#lo + 1] = "  " .. opts
+			for s_ = 1, nsc do
+				SCENECTX = (nsc > 1) and ("scene " .. s_ .. ", ") or nil
+				for _, x in ipairs(scene_rows(scenes[s_], base, counter, s_ == nsc)) do lo[#lo + 1] = x end
+				NPCTX, SCENECTX = nil, nil
+			end
+			level_out[key] = lo
+			if nsc > 0 then
+				relSeen = relSeen + 1
+				for s_ = 1, nsc do
+					if num(scenes[s_].start[2]) < num(hdr[2]) then relBefore = relBefore + 1; break end
+				end
+			end
+		end)
+		NPCTX, SCENECTX = nil, nil
+		if not ok then
+			UNREAD.n, UNREAD.first = un, uf
+			if isNP(err) then kept[#kept + 1] = { key, a, b, err.msg } else error(err, 0) end
+		end
+	end
+
+	local game, clips, menus = {}, {}, {}
+	local offs = {}
+	for _, n in ipairs(names_order) do if starts(n, "offset") then offs[#offs + 1] = n end end
+	local used = {}
+	for _, n in ipairs(names_order) do
+		if not used[n] then
+			local v, com, txt = simple[n][1], simple[n][2], simple[n][3]
+			local tail = (com ~= "") and ("   # " .. com) or ""
+			local handled = false
+			if n == "totalDeath" or n == "finalstage" or n == "PlayOrder" then
+				handled = true
+			elseif n == "offsetDeath" and ndeaths > 0 then
+				handled = true
+			elseif n == "offsetMenus" then
+				table.insert(menus, 1, sfmt("  %-18s %s%s", "Menus", fmt_num(v), tail))
+				used[n] = true
+				handled = true
+			end
+			if not handled and starts(n, "offset") and v ~= nil and n:sub(7) ~= "" then
+				local x = n:sub(7)
+				local endname
+				for _, cand in ipairs({ n .. "end", n .. "End" }) do if simple[cand] then endname = cand end end
+				if endname then
+					local rule = n .. (ENDCAPITAL[x] and "End" or "end")
+					local ev = simple[endname][1]
+					if endname == rule and ev ~= nil then
+						local c2 = simple[endname][2]
+						if c2 ~= "" then tail = (tail ~= "") and (tail .. "   # " .. c2) or ("   # " .. c2) end
+						clips[#clips + 1] = sfmt("  %-18s %s - %s%s", x, fmt_num(v), fmt_num(ev), tail)
+						used[n] = true
+						used[endname] = true
+						handled = true
+					end
+				else
+					local isEnd = false
+					for _, o in ipairs(offs) do if n == o .. "end" or n == o .. "End" then isEnd = true end end
+					if not isEnd then
+						clips[#clips + 1] = sfmt("  %-18s %s%s", x, fmt_num(v), tail)
+						used[n] = true
+						handled = true
+					end
+				end
+			end
+			if not handled and starts(n, "frame") and v ~= nil and n:sub(6) ~= "" then
+				local x = n:sub(6)
+				local sg, dd = txt:match("^offsetMenus%s*([%+%-])%s*(%d+)$")
+				local vt = sg and ("Menus " .. sg .. " " .. dd) or fmt_num(v)
+				menus[#menus + 1] = sfmt("  %-18s %s%s", x, vt, tail)
+				used[n] = true
+				handled = true
+			end
+			if not handled then
+				local vt
+				if type(v) == "boolean" then
+					vt = v and "yes" or "no"
+				elseif type(v) == "string" then
+					if starts(v, "{") then
+						table.insert(leftover, 1, n .. " = " .. txt)
+						used[n] = true
+						handled = true
+					else
+						vt = '"' .. v .. '"'
+					end
+				elseif v == nil then
+					table.insert(leftover, 1, n .. " = " .. txt)
+					used[n] = true
+					handled = true
+				else
+					vt = fmt_num(v)
+				end
+				if not handled then
+					game[#game + 1] = sfmt("  %-18s %s%s", n, vt, tail)
+					used[n] = true
+				end
+			end
+		end
+	end
+
+	if simple.finalstage and simple.finalstage[1] ~= default_final then
+		game[#game + 1] = sfmt("  %-18s %s", "finalstage", fmt_num(simple.finalstage[1]))
+	end
+	if simple.PlayOrder then
+		local po = value(simple.PlayOrder[3])
+		local fin = simple.finalstage and simple.finalstage[1] or default_final
+		if not eqv(po, range(1, fin)) then
+			local parts = {}
+			for _, x in ipairs(type(po) == "table" and po or {}) do parts[#parts + 1] = pystr(x) end
+			game[#game + 1] = sfmt("  %-18s %s", "PlayOrder", table.concat(parts, " "))
+		end
+	end
+	if simple.totalDeath and ndeaths > 0 and simple.totalDeath[1] ~= ndeaths then
+		game[#game + 1] = sfmt("  %-18s %s", "RandomDeaths", fmt_num(simple.totalDeath[1]))
+	end
+
+	local has_secret = level_lines.levelSecret ~= nil or level_lines["1000"] ~= nil
+	local function nv(line)
+		local body = splitPlain(line, "   #")[1]
+		local w = {}
+		for x in body:gmatch("%S+") do w[#w + 1] = x end
+		local rest = {}
+		for q = 2, #w do rest[#rest + 1] = w[q] end
+		return w[1], table.concat(rest, " ")
+	end
+	local allow_tier, allow_map, has_rel, diff_auto
+	for _, g in ipairs(game) do
+		local n2, v2 = nv(g)
+		if n2 == "AllowTier" then allow_tier = (v2 == "yes") end
+		if n2 == "AllowMap" then allow_map = (v2 == "yes") end
+		if n2 == "RelativeFrames" then has_rel = true end
+	end
+	if not has_rel and relBefore * 2 > relSeen then game[#game + 1] = sfmt("  %-18s %s", "RelativeFrames", "yes") end
+	local drop_tiers = allow_tier == false and tiers_ok
+	if drop_tiers then tiers_ok = false end
+	local function keep(g)
+		local n2, v2 = nv(g)
+		if GAME_DROP[n2] then return false end
+		if n2 == "AllowSecret" then return v2 ~= (has_secret and "yes" or "no") end
+		if n2 == "AllowTier" then return v2 ~= (tiers_ok and "yes" or "no") end
+		if n2 == "MapStart" and not allow_map then return false end
+		if n2 == "IngameDiffchoice" and v2 == "yes" and diff_auto then return false end
+		return GAME_DEFAULTS[n2] ~= v2
+	end
+	local in_game
+	for _, g in ipairs(game) do
+		local n2, v2 = nv(g)
+		if n2 == "IngameDiffchoice" then in_game = (v2 == "yes") end
+	end
+	if in_game == nil then
+		in_game = false
+		local a = readAddonsDiff(gameDir)
+		if a ~= nil then in_game = a end
+	end
+	local function filter(l, f)
+		local r = {}
+		for _, x in ipairs(l) do if f(x) then r[#r + 1] = x end end
+		return r
+	end
+	if not in_game then
+		menus = filter(menus, function(m)
+			local n2 = nv(m)
+			return n2 ~= "Easy" and n2 ~= "Normal" and n2 ~= "Hard" and n2 ~= "Extreme"
+		end)
+	end
+	local seen = {}
+	for _, m in ipairs(menus) do seen[nv(m)] = true end
+	diff_auto = seen.Easy and seen.Normal and seen.Hard
+	game = filter(game, keep)
+	clips = filter(clips, function(c) local n2, v2 = nv(c); return CLIP_DEFAULTS[n2] ~= v2 end)
+	menus = filter(menus, function(m) local n2, v2 = nv(m); return MENU_DEFAULTS[n2] ~= v2 end)
+
+	local function add(l) for _, x in ipairs(l) do out[#out + 1] = x end end
+	if #game > 0 then out[#out + 1] = "GAME"; add(game); out[#out + 1] = "" end
+	if #clips > 0 then out[#out + 1] = "CLIPS"; add(clips); out[#out + 1] = "" end
+	if #menus > 0 then out[#out + 1] = "MENU FRAMES"; add(menus); out[#out + 1] = "" end
+	if ndeaths > 0 then
+		out[#out + 1] = "DEATHS"
+		for k2 = 1, ndeaths do
+			local dd = deaths[k2]
+			out[#out + 1] = rstrip(sfmt("  %4d   %6s - %-6s", k2, fmt_num(dd[1]), fmt_num(dd[2])) .. ((dd[3] ~= "") and ("   # " .. dd[3]) or ""))
+		end
+		out[#out + 1] = ""
+	end
+	if tiers_ok then
+		out[#out + 1] = "TIERS"
+		for t = 1, ntiers - 1 do
+			local parts = {}
+			for _, x in ipairs(tiers[t]) do parts[#parts + 1] = fmt_num(x) end
+			out[#out + 1] = "  " .. table.concat(parts, " ")
+		end
+		out[#out + 1] = ""
+	end
+
+	local order = {}
+	for k in pairs(level_lines) do order[#order + 1] = k end
+	table.sort(order, function(x, y) return level_lines[x][1] < level_lines[y][1] end)
+	for _, key in ipairs(order) do
+		if level_out[key] then add(level_out[key]); out[#out + 1] = "" end
+	end
+	while #out > 0 and strip(out[#out]) == "" do out[#out] = nil end
+	out[#out + 1] = "]]"
+
+	local lua_after = {}
+	for _, l in ipairs(leftover) do lua_after[#lua_after + 1] = l end
+	if ntiers > 0 and not tiers_ok and not drop_tiers then
+		for _, st in ipairs(stmts) do
+			if starts(st[2], "Tiers[") then lua_after[#lua_after + 1] = lines[st[1]] end
+		end
+	end
+	for _, key in ipairs(order) do
+		if not level_out[key] then lua_after[#lua_after + 1] = lines[level_lines[key][1]] end
+	end
+	if #kept > 0 then
+		lua_after[#lua_after + 1] = lines[fs]
+		for n_, kp in ipairs(kept) do
+			local a, b = kp[2], kp[3]
+			lua_after[#lua_after + 1] = lines[a - 1]:match("^%s*") .. "-- Wizard: stays in Lua, " .. kp[4]:gsub("[\r\n]+", " ")
+			lua_after[#lua_after + 1] = subFirstIf(lines[a - 1], n_ == 1 and "if" or "elseif")
+			for x = a, b do lua_after[#lua_after + 1] = lines[x] end
+		end
+		lua_after[#lua_after + 1] = "\tend"
+		lua_after[#lua_after + 1] = lines[fe]
+	end
+
+	out = pretty(out)
+	local final = {}
+	for _, l in ipairs(header) do final[#final + 1] = l end
+	if #header > 0 then final[#final + 1] = "" end
+	for _, l in ipairs(out) do final[#final + 1] = l end
+	if #lua_after > 0 then
+		final[#final + 1] = ""
+		for _, l in ipairs(lua_after) do final[#final + 1] = l end
+	end
+	final[#final + 1] = ""
+
+	local nlev = nkeys(level_out)
+	local said = { sfmt("levels in the sheet: %d of %d", nlev, #blocks) }
+	for _, kp in ipairs(kept) do said[#said + 1] = "kept in Lua: Level[" .. kp[1] .. "]: " .. kp[4] end
+	for _, r in ipairs(report) do said[#said + 1] = r end
+	if UNREAD.n > 0 then said[#said + 1] = sfmt("values KimmyScript never reads, left out: %d (first: %s)", UNREAD.n, UNREAD.first) end
+	if #leftover > 0 then said[#said + 1] = sfmt("other Lua kept after the sheet: %d line(s)", #leftover) end
+	return table.concat(final, eol), said, { levels = nlev, of = #blocks, kept = #kept, levelLines = nkeys(level_lines), why = kept, unread = UNREAD.n }
+end
+
+function kimmyConvertDirk(raw, gameDir, modern)
+	MODERN = modern and true or false
+	local ok, text, said, info = pcall(convert, raw, gameDir)
+	NPCTX, SCENECTX = nil, nil
+	if ok then return text, said, info end
+	local e = text
+	if type(e) == "table" then e = e.fatal or e.msg or "?" end
+	return nil, { "not converted: " .. tostring(e) }
+end

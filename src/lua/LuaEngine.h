@@ -46,7 +46,41 @@ public:
     // once, top to bottom.
     bool runFile(const std::string& path);
 
+    // Loads the shared KimmyScript engine bootstrap (KimmyScript/Script/
+    // globals.kimmy, or globals.singe -- whichever exists, resolved the same
+    // way dofile() itself falls back between the two, see LuaEngine.cpp)
+    // natively, once, before any game script runs -- so individual games no
+    // longer need their own historical
+    // dofile("./KimmyScript/Script/globals.singe") line at all. If a game's
+    // top-level script still has that line (nothing requires deleting it),
+    // the dofile() compat shim recognizes the exact same file being asked
+    // for again and silently skips it rather than re-running the whole
+    // shared-engine chain a second time. `relativePath` is resolved against
+    // the process's current directory, same as the dofile() calls it
+    // replaces -- call only after chdir'ing to the shared engine's root.
+    bool runSharedEngineBootstrap(const std::string& relativePath);
+
+    // dirk --wizard <folder> (2026-10-10): runs Wizard, built into dirk as
+    // Lua bytecode (src/lua/WizardChunk.h, made by tools/embed_wizard.py
+    // from wizard.kimmy), in place of a game script.
+    bool runWizardChunk();
+
+    // "context: file:line: message" of the last failed call, one line --
+    // same text as before 2026-09-26. Cleared at the start of every call
+    // made through pcall(), so it's empty after a successful call (it used
+    // to linger forever, letting an old error resurface under a different
+    // callback's label).
     const std::string& lastError() const { return lastError_; }
+
+    // 2026-09-26 (review, point 2): the Lua call chain that led to
+    // lastError() -- "stack traceback:\n\t..." as produced by
+    // debug.traceback() at the moment of the error, e.g. showing
+    // onInputReleased -> writeSave -> writeSavePlus -> io.output for the
+    // DL2 s4p.cfg bug, instead of only the innermost addons.kimmy:314.
+    // Empty on success, and for load/syntax errors (nothing ran yet, so
+    // there's no chain to show). Only ever computed when an error actually
+    // happens -- zero cost on the normal path.
+    const std::string& lastTraceback() const { return lastTraceback_; }
 
     bool globalFunctionExists(const std::string& fnName);
 
@@ -68,6 +102,15 @@ private:
 
     lua_State* L_ = nullptr;
     std::string lastError_;
+    std::string lastTraceback_;
 };
+
+// luaL_loadfile(), or the same from a launched .zdirk's zip when the file
+// is only there (see core/GameArchive.h). Same return value and stack
+// effect as luaL_loadfile.
+int loadFileOrArchive(lua_State* L, const std::string& path);
+
+// The wizard.kimmy fingerprint WizardChunk.h was made from (8 hex digits).
+const char* wizardChunkTag();
 
 } // namespace dirk

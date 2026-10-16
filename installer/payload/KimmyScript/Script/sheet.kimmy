@@ -1,0 +1,1587 @@
+--[==[
+
+PROGRAM NAME:	KIMMY SCRIPT
+AUTHOR:			KARIS (2020/2026)
+
+This file is part of KIMMY SCRIPT (GNU General Public License).
+
+The game sheet (2026-10-04). A .dirk holds its game between Sheet [[ and ]]:
+
+	Sheet [[
+	GAME
+	  MovieFPS          23.976
+
+	CLIPS
+	  GameOver          21480 - 21563
+
+	MENU FRAMES
+	  Menus             32482
+	  Options           Menus + 4
+
+	DEATHS
+	    1   24346 - 24381
+
+	LEVEL 4   Tentacles & Halberd
+	  intro 2091 - 2092   replay 11
+	  SCENE 2093 - 2465
+	      2167 - 2180    B1       5
+	      2226 - 2238    PATH     6
+	          RIGHT  > death 7
+	          UP     > tentacles
+	      2273 - 2286    RIGHT    6          tentacles
+	]]
+
+A level without "replay" gets -1, the usual value (v21).
+Settings left out of GAME keep KimmyScript's default (globals.kimmy, v22).
+A TIERS section offers the tier mode, a LEVEL SECRET allows the secret
+level (AllowTier / AllowSecret only to say otherwise). Blank.dirk lists
+every setting.
+
+The full list of words is in the tutorial. Everything is turned into the
+usual tables (Level, Death, offset..., frame...) when the .dirk is loaded,
+so the rest of KimmyScript works as before. Lua may follow the ]].
+
+This file holds, in order: (1) levels and deaths given as tables, which a
+sheet is turned into, and a scene's moves for the game; (2) the start-up
+check of the game; (3) the sheet reader, Sheet(). Until v27, (1) and (2)
+were levels.kimmy (v28: one file).
+
+]==]
+
+-- 1. Levels and deaths given as tables (until v27: levels.kimmy) ---------------
+--[[
+
+Levels and deaths given as tables (2026-10-04). The sheet (part 3) is
+turned into them; a .dirk may also give them directly:
+
+	Deaths = { {27810, 27846}, {27863, 27910} }
+	Level[4] = { title = "Tentacles & Halberd", intro = {2091, 2092}, replay = 11,
+		{ 2093, 2465,
+			{2167, 2180, BUTTON1, 5},
+			{2226, 2238, PATH, 6, path = {RIGHT, 1007, UP, 3}},
+			{2414, 2448, TIMED, 6, timed = { {UP,2423,2433,8,7}, {UP,2440,2448,8} }},
+		},
+	}
+
+Each is checked, then turned into the usual Level[n] = {title, intro start,
+intro end, scenes, mirror, deathmirror, replay, image} and Death[n], and
+kimmySetupMoves() gives a scene's moves the way setupMoves() did. Optional
+blocks normal / hard / extreme change a move or a scene from that
+difficulty up. finalstage and PlayOrder default to the levels 1, 2, 3...
+in that order. Old .dirk files (setupMoves, Death[n]) work as before.
+
+]]
+
+LevelScenes = {}
+
+local LEVEL_KEYS = { title = true, intro = true, mirror = true, deathmirror = true, replay = true, selectframe = true }
+local DIFFICULTIES = { { "normal", 1 }, { "hard", 2 }, { "extreme", 3 } }
+local IS_DIFFICULTY = { normal = true, hard = true, extreme = true }
+local ROW_KEYS = { path = true, timed = true, choices = true, normal = true, hard = true, extreme = true,
+	generated = true }	-- generated: a TOLEVEL / TOSCENE the sheet adds for a choice (v54)
+local ROW_CHANGE_KEYS = { path = true, timed = true, choices = true, ifbeaten = true, ifnotbeaten = true }
+local SCENE_CHANGE_KEYS = { start = true, finish = true, ifbeaten = true, ifnotbeaten = true }
+
+function kimmyIsNewLevel(lv)
+
+	return type(lv) == "table" and (type(lv[1]) == "table" or lv.title ~= nil or lv.intro ~= nil)
+
+end
+
+local function isNum(v) return type(v) == "number" end
+
+-- Highest index of a list, holes included (table.maxn is gone after Lua 5.1).
+local function maxn(t)
+	local n = 0
+	for k, _ in pairs(t) do
+		if type(k) == "number" and k > n then n = k end
+	end
+	return n
+end
+
+-- These two return what is wrong, or nil.
+local function timedListError(where, list)
+	if type(list) ~= "table" or maxn(list) == 0 then return where .. ": TIMED needs timed = { {...} }" end
+	for t = 1, maxn(list) do
+		if type(list[t]) ~= "table" then return where .. ": timed must be a list: timed = { {...}, {...} }" end
+	end
+end
+
+-- PATH: choices in pairs (direction, move), up to 4, then join = the move
+-- where the branches meet again (or OUT). The old 9 values still work.
+local function pathError(where, p)
+	if type(p) ~= "table" then return where .. ": path must be { direction, move, ... }" end
+	for k, _ in pairs(p) do
+		if type(k) ~= "number" and k ~= "join" then return where .. ": unknown setting '" .. tostring(k) .. "' in path (join)" end
+	end
+	local n = maxn(p)
+	if p.join ~= nil then
+		if n < 2 or n > 8 or n % 2 ~= 0 then return where .. ": path takes pairs (direction, move), at most 4, then join = ..." end
+	elseif n ~= 9 and (n < 2 or n > 8 or n % 2 ~= 0) then
+		return where .. ": path takes pairs (direction, move), at most 4, then join = ..."
+	end
+end
+
+local function expandPath(p)
+	local n = maxn(p)
+	local out = {}
+	for i = 1, 8 do out[i] = (i <= n and p[i]) or 0 end
+	if p.join ~= nil then out[9] = p.join
+	elseif n == 9 then out[9] = p[9]
+	else out[9] = 0 end
+	return out
+end
+
+local function conditionError(where, ch)
+	for _, k in ipairs({"ifbeaten", "ifnotbeaten"}) do
+		if ch[k] ~= nil and not isNum(ch[k]) then return where .. ": " .. k .. " must be a level number" end
+	end
+end
+
+-- Checks a level written in one block and returns it in the usual form
+-- {title, intro start, intro end, scenes, mirror, deathmirror, replay, selectframe}.
+function kimmyLevelFromBlock(key, lv, errLevel)
+
+	local where = "Level[" .. tostring(key) .. "]"
+	local function fail(msg) error(where .. ": " .. msg, errLevel) end
+
+	for k, _ in pairs(lv) do
+		if type(k) ~= "number" and not LEVEL_KEYS[k] then
+			fail("unknown setting '" .. tostring(k) .. "' (settings: title, intro, mirror, deathmirror, replay, selectframe)")
+		end
+	end
+
+	if type(lv.title) ~= "string" then fail('title = "..." is missing') end
+	if type(lv.intro) ~= "table" or not isNum(lv.intro[1]) or not isNum(lv.intro[2]) then
+		fail("intro = {start, end} is missing")
+	end
+	for _, k in ipairs({"mirror", "deathmirror", "replay", "selectframe"}) do
+		if lv[k] ~= nil and not isNum(lv[k]) then fail(k .. " must be a number") end
+	end
+
+	local nScenes = maxn(lv)
+	if nScenes == 0 then fail("no scene: add { start, end, moves... }") end
+
+	local scenes = {}
+
+	for s = 1, nScenes do
+
+		local sc = lv[s]
+		local sw = "scene " .. s
+
+		if type(sc) ~= "table" then fail(sw .. " must be { start, end, moves... }") end
+		for k, v in pairs(sc) do
+			if type(k) ~= "number" then
+				if not IS_DIFFICULTY[k] then
+					fail(sw .. ": unknown setting '" .. tostring(k) .. "' (normal, hard or extreme)")
+				end
+				if type(v) ~= "table" then fail(sw .. ": " .. k .. " must be { start = ..., finish = ... }") end
+				for k2, v2 in pairs(v) do
+					if not SCENE_CHANGE_KEYS[k2] then
+						fail(sw .. ", " .. k .. ": unknown setting '" .. tostring(k2) .. "' (start, finish, ifbeaten, ifnotbeaten)")
+					end
+					if (k2 == "start" or k2 == "finish") and not isNum(v2) then fail(sw .. ", " .. k .. ": " .. k2 .. " must be a frame") end
+				end
+				local e = conditionError(sw .. ", " .. k, v); if e then fail(e) end
+			end
+		end
+		if not isNum(sc[1]) or not isNum(sc[2]) then fail(sw .. ": the start and end frames come first") end
+
+		local rows = {}
+
+		for m = 3, maxn(sc) do
+
+			local row = sc[m]
+			local mw = sw .. ", move " .. (m - 2)
+
+			if type(row) ~= "table" then fail(mw .. " must be { start, end, MOVE, death }") end
+			for k, v in pairs(row) do
+				if type(k) ~= "number" and not ROW_KEYS[k] then
+					fail(mw .. ": unknown setting '" .. tostring(k) .. "' (path, timed, choices, normal, hard or extreme)")
+				end
+				if IS_DIFFICULTY[k] then
+					if type(v) ~= "table" then fail(mw .. ": " .. k .. " must be { ... }") end
+					for k2, _ in pairs(v) do
+						if type(k2) ~= "number" and not ROW_CHANGE_KEYS[k2] then
+							fail(mw .. ", " .. k .. ": unknown setting '" .. tostring(k2) .. "' (path, timed, choices, ifbeaten, ifnotbeaten)")
+						end
+					end
+					local e = v.timed ~= nil and timedListError(mw .. ", " .. k, v.timed) or conditionError(mw .. ", " .. k, v)
+					if e then fail(e) end
+				end
+			end
+			if not isNum(row[1]) or not isNum(row[2]) then fail(mw .. ": start and end frames expected") end
+			if not isNum(row[3]) then fail(mw .. ": unknown move (misspelt?)") end
+
+			if row[3] == PATH and type(row.path) ~= "table" and row[5] == nil then
+				fail(mw .. ': PATH needs path = {...} or its "U,10,D,11" string')
+			end
+			if row[3] == PATH and row.path ~= nil then
+				local e = pathError(mw, row.path)
+				if e then fail(e) end
+			end
+			for _, d in ipairs(DIFFICULTIES) do
+				local ch = row[d[1]]
+				if ch ~= nil and ch.path ~= nil and (ch[3] or row[3]) == PATH then
+					local e = pathError(mw .. ", " .. d[1], ch.path)
+					if e then fail(e) end
+				end
+			end
+			if row[3] == TIMED then
+				local e = timedListError(mw, row.timed)
+				if e then fail(e) end
+			end
+			if row[3] == CHOOSE then
+				if type(row.choices) ~= "table" or #row.choices == 0 then fail(mw .. ": CHOOSE needs choices = { {...} }") end
+			end
+			if row.choices ~= nil and row[3] ~= CHOOSE then fail(mw .. ": choices only go with CHOOSE") end
+			if row.timed ~= nil and row[3] ~= TIMED then fail(mw .. ": timed only goes with TIMED") end
+
+			rows[#rows + 1] = row
+
+		end
+
+		if #rows == 0 then fail(sw .. ": no move") end
+
+		scenes[s] = { sc[1], sc[2], rows, sc }
+
+	end
+
+	return { lv.title, lv.intro[1], lv.intro[2], nScenes, lv.mirror or 0, lv.deathmirror or 0, lv.replay or -1, lv.selectframe }, scenes
+
+end
+
+local function copy(t)
+
+	if type(t) ~= "table" then return t end
+	local c = {}
+	for k, v in pairs(t) do c[k] = copy(v) end
+	return c
+
+end
+
+function kimmyCheckLevel(key, errLevel)
+
+	local lv = rawget(Level, key)
+	if not kimmyIsNewLevel(lv) then return end
+	local old, scenes = kimmyLevelFromBlock(key, lv, errLevel)
+	rawset(Level, key, old)
+	LevelScenes[key] = scenes
+
+end
+
+-- Deaths = { {start, end}, ... } gives Death[1..n] and totalDeath = n.
+local deathsDone = false
+
+function kimmyCheckDeaths()
+
+	if deathsDone or Deaths == nil then return end
+	deathsDone = true
+
+	if type(Deaths) ~= "table" then error("Deaths must be a list: Deaths = { {start, end}, ... }", 0) end
+	if next(Death) ~= nil then error("Deaths: use Deaths = {...} or Death[n] = {...}, not both", 0) end
+	for k, _ in pairs(Deaths) do
+		if type(k) ~= "number" then error("Deaths: unknown setting '" .. tostring(k) .. "'", 0) end
+	end
+
+	local n = maxn(Deaths)
+	for i = 1, n do
+		local d = Deaths[i]
+		if type(d) ~= "table" or not isNum(d[1]) or not isNum(d[2]) then
+			error("Deaths: death " .. i .. " must be {start, end}", 0)
+		end
+		Death[i] = d
+	end
+	-- A game may still set totalDeath itself to keep the last deaths out of
+	-- the random ones (death 0).
+	if totalDeath == nil then totalDeath = n end
+
+end
+
+-- finalstage and PlayOrder left out: the levels 1, 2, 3... that exist, played
+-- in that order. A game sets them only to do otherwise (Time Gal's order).
+function kimmyCheckOrder()
+
+	if finalstage == nil then
+		local n = 0
+		while rawget(Level, n + 1) ~= nil do n = n + 1 end
+		if n == 0 then error("no Level[1]", 0) end
+		finalstage = n
+	end
+	if type(PlayOrder) == "table" and next(PlayOrder) == nil then
+		for i = 1, finalstage do PlayOrder[i] = i end
+	end
+
+end
+
+function kimmyMovieFPS()
+	if lfs == nil or lfs.dir == nil then return nil end
+	local function le(t, i, n)
+		local v = 0
+		for k = n - 1, 0, -1 do v = v * 256 + t:byte(i + k) end
+		return v
+	end
+	for _, sub in ipairs({ "Movie", "Video" }) do
+		local folder = DIR .. sub
+		local ok, iter, st = pcall(lfs.dir, folder)
+		if ok and iter then
+			for f in iter, st do
+				local video = f:match("^(.+)%.dirkindex$")
+				if video and lfs.attributes(folder .. "/" .. video) then
+					local h = io.open(folder .. "/" .. f, "rb")
+					if h then
+						local t = h:read(48)
+						h:close()
+						if t and #t >= 48 and t:sub(1, 8) == "DIRKIDX2" then
+							local n, d = le(t, 41, 4), le(t, 45, 4)
+							if n > 0 and d > 0 then return n / d end
+						end
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+function kimmyFPSWord(v)
+	return (string.format("%.3f", v):gsub("0+$", ""):gsub("%.$", ""))
+end
+
+function kimmyCheckLevels()
+
+	local okFps, real = pcall(kimmyMovieFPS)
+	if okFps and real then
+		if MovieFPS ~= nil and math.abs(MovieFPS - real) > 0.01 then
+			movieFpsNote = "MovieFPS " .. kimmyFPSWord(MovieFPS) .. ", but the movie is " .. kimmyFPSWord(real) .. ": " .. kimmyFPSWord(real) .. " is used"
+		end
+		MovieFPS = real
+	end
+	kimmyCheckDeaths()
+	kimmyCheckOrder()
+	-- AllowSecret not given: yes when the game has a secret level (v22)
+	if AllowSecret == nil then AllowSecret = rawget(Level, levelSecret) ~= nil end
+	-- no tiers given: one tier with every level, in the play order (v22),
+	-- but the last level: it is always played last, as in random play, and
+	-- doMixTIE() could never place it again (the game hung, v30)
+	if Tiers ~= nil and Tiers[0] == nil and PlayOrder ~= nil and #PlayOrder > 0 then
+		Tiers[1] = {}
+		for _, l in ipairs(PlayOrder) do if l ~= finalstage then Tiers[1][#Tiers[1] + 1] = l end end
+		if #Tiers[1] > 0 then Tiers[0] = { 1, #Tiers[1] } else Tiers[1] = nil; Tiers[0] = { 0 } end
+	end
+	for key, _ in pairs(Level) do kimmyCheckLevel(key, 0) end
+	-- what would not play as written: console and <game>-check.txt (v26)
+	kimmyCheckGame()
+
+end
+
+-- Level[n] = {...} in the .dirk: checked and turned into the usual form
+-- right away, so an error points at the game's own line.
+function kimmyWatchLevels()
+
+	setmetatable(Level, { __newindex = function(t, key, lv)
+		rawset(t, key, lv)
+		kimmyCheckLevel(key, 5)
+	end })
+
+end
+
+-- normal / hard / extreme blocks that apply now, easiest first.
+local function changesNow(src)
+
+	local list = {}
+	local diff = dip_Difficulty or 0
+	for _, d in ipairs(DIFFICULTIES) do
+		local ch = src[d[1]]
+		if ch ~= nil and diff >= d[2] then
+			local ok = true
+			if ch.ifbeaten ~= nil then
+				ok = stage ~= nil and stage[ch.ifbeaten] ~= nil and stage[ch.ifbeaten][BEATSTATUS] == true
+			end
+			if ok and ch.ifnotbeaten ~= nil then
+				ok = stage ~= nil and stage[ch.ifnotbeaten] ~= nil and stage[ch.ifnotbeaten][BEATSTATUS] == false
+			end
+			if ok then list[#list + 1] = ch end
+		end
+	end
+	return list
+
+end
+
+-- What setupMoves() does for an old level, from the level's block.
+function kimmySetupMoves(thisLevel, thisScene)
+
+	kimmyCheckDeaths()
+	kimmyCheckOrder()
+	kimmyCheckLevel(thisLevel, 0)
+
+	local scenes = LevelScenes[thisLevel]
+	if scenes == nil then
+		setupMoves(thisLevel, thisScene)
+		return
+	end
+
+	local sc = scenes[thisScene]
+	if sc == nil then return end
+
+	sceneStart = sc[1]
+	sceneEnd = sc[2]
+	for _, ch in ipairs(changesNow(sc[4])) do
+		if ch.start ~= nil then sceneStart = ch.start end
+		if ch.finish ~= nil then sceneEnd = ch.finish end
+	end
+	totalMoves = #sc[3]
+
+	local nextTimed = totalMoves
+
+	for k, src in ipairs(sc[3]) do
+
+		local row = {}
+		for i = 1, maxn(src) do row[i] = src[i] end
+		local pathNow, timedNow, choicesNow = src.path, src.timed, src.choices
+
+		for _, ch in ipairs(changesNow(src)) do
+			for i = 1, maxn(ch) do
+				if ch[i] ~= nil then row[i] = ch[i] end
+			end
+			if ch.path ~= nil then pathNow = ch.path end
+			if ch.timed ~= nil then timedNow = ch.timed end
+			if ch.choices ~= nil then choicesNow = ch.choices end
+		end
+
+		if pathNow ~= nil then
+			if row[3] == PATH then path[k] = expandPath(pathNow) else path[k] = copy(pathNow) end
+		end
+
+		if timedNow ~= nil then
+			if #timedNow == 1 then
+				row[5] = nil; row[6] = nil
+				timed[k] = copy(timedNow[1])
+			else
+				row[5] = nextTimed + 1
+				for _, t in ipairs(timedNow) do
+					nextTimed = nextTimed + 1
+					timed[nextTimed] = copy(t)
+				end
+				row[6] = nextTimed
+			end
+		end
+
+		if choicesNow ~= nil then
+			for c, chc in ipairs(choicesNow) do choice[c] = copy(chc) end
+			if row[4] == nil then row[4] = #choicesNow end
+		end
+
+		move[k] = row
+
+	end
+
+end
+
+-- 2. Checking the game at start-up (v26, v27) ----------------------------------
+-- Every level and scene is set up the way the game does it (each difficulty,
+-- the other levels beaten or not), and what would not play as written is
+-- listed: a death that does not exist, a move that starts after it ends,
+-- leaves its scene or overlaps the one before, a jump to a move that does not
+-- exist, a '> end' that stops the game, PATH / YESNO branches out of the
+-- movie's order or with nothing to join, a death clip inside a level. The list
+-- goes to the console and to <game>-check.txt next to the game, e.g.
+-- Nimh-check.txt, removed when there is nothing to say. The game itself runs
+-- as usual: nothing here stops it, and every global it touches is put back.
+-- Sheet() (part 3) fills kimmySheetLines, so each line says where it is in the .dirk.
+
+kimmySheetLines = nil
+local gameChecked = false
+
+local function runGameCheck()
+
+	local found, seen = {}, {}
+	local L = kimmySheetLines or {}
+	local src = L.src
+	if src == nil and dirkGetScriptPath ~= nil then src = tostring(dirkGetScriptPath()):match("([^/\\]+)$") end
+	src = src or "game"
+
+	local function add(line, msg)
+		local text = src .. ":" .. (line and (line .. ":") or "") .. " " .. msg
+		if not seen[text] then
+			seen[text] = true
+			found[#found + 1] = text
+		end
+	end
+
+	local keys = {}
+	for k, _ in pairs(Level) do keys[#keys + 1] = k end
+	table.sort(keys, function(a, b)
+		if type(a) == "number" and type(b) == "number" then return a < b end
+		return tostring(a) < tostring(b)
+	end)
+
+	local NOFRAMES = { [SKIP] = true, [WAY] = true, [WAYOUT] = true, [TOLEVEL] = true, [TOSCENE] = true }
+	local NODEATH = { [SKIP] = true, [WAY] = true, [WAYOUT] = true, [TOLEVEL] = true, [TOSCENE] = true, [CHOOSE] = true }
+
+	for _, key in ipairs(keys) do
+		local lv = Level[key]
+		local title = tostring(lv[1] or "")
+		local lvLines = (L.levels or {})[key] or {}
+		local name = "LEVEL " .. ((key == levelSecret) and "SECRET" or tostring(key)) .. " " .. title
+		for s = 1, (lv[TOTALSCENES] or 0) do
+			local scLines = (lvLines.scenes or {})[s] or {}
+			local mvLines = scLines.moves or {}
+			local here = name .. ", scene " .. s
+			local sceneLine = scLines.line or lvLines.line
+			for diff = 0, 3 do
+				for _, beat in ipairs({ false, true }) do
+
+					dip_Difficulty = diff
+					stage = {}
+					for _, k2 in ipairs(keys) do stage[k2] = { false, beat, 0 } end
+					move, path, choice, timed, multi = {}, {}, {}, {}, {}
+					sceneStart, sceneEnd, totalMoves = nil, nil, nil
+					bFlip, iPenal = false, 0
+
+					local ok, err = pcall(kimmySetupMoves, key, s)
+					if ok and (type(totalMoves) ~= "number" or type(sceneStart) ~= "number" or type(sceneEnd) ~= "number") then
+						ok, err = false, "no scene frames or no moves"
+					end
+					local s0, s1 = sceneStart, sceneEnd
+					local raw = {}
+					if ok then
+						for q = 1, totalMoves do
+							if type(move[q]) == "table" then raw[q] = { move[q][1], move[q][2] } end
+						end
+						ok, err = pcall(setupFrames, key)
+					end
+
+					if not ok then
+						add(sceneLine, here .. ": cannot be set up (" .. tostring(err) .. ")")
+					else
+						local function isMove(v) return type(v) == "number" and v > 0 and v <= totalMoves end
+						local function leavesScene(k)
+							local e, p = move[k], path[k]
+							if type(e) ~= "table" then return false end
+							local et = e[3]
+							if et == WAYOUT or et == TOLEVEL or et == TOSCENE then return true end
+							if et == PATH and type(p) == "table" and p[9] == OUT then return true end
+							if et == YESNO and type(p) == "table" and p[3] == OUT then return true end
+							return false
+						end
+						-- A branch (tutorial's PATH rule): it plays from its move up to the move
+						-- before the next choice's, then goes to the jump value ('go'). With no
+						-- jump value (0) the game stops there, unless the branch left the scene.
+						local function branch(line, w, label, from, nextTo, join)
+							if not isMove(from) or not isMove(nextTo) or nextTo == from then return end
+							-- a choice that leaves (a TOSCENE / TOLEVEL the sheet added, v54) is no branch
+							if leavesScene(from) then return end
+							-- the last branch, before the ways out (v55): it plays on
+							if leavesScene(nextTo) and nextTo < from then return end
+							if nextTo < from then
+								add(line, w .. ": " .. label .. " goes to move " .. from .. ", after the next choice's move "
+									.. nextTo .. " (the choices must follow the movie)")
+								return
+							end
+							if join ~= 0 then return end
+							for k = from, nextTo - 1 do if leavesScene(k) then return end end
+							add(line, w .. ": " .. label .. " plays moves " .. from .. " to " .. (nextTo - 1)
+								.. ", then has nothing to join: the game stops there (add 'go > name')")
+						end
+						local prev, prevQ = nil, nil
+						for q = 1, totalMoves do
+							local m, r = move[q], raw[q]
+							local line = mvLines[q] or sceneLine
+							if m == nil or r == nil then
+								add(line, here .. ": move " .. q .. " is missing")
+							else
+								local a, b, t = r[1], r[2], m[3]
+								local w = here .. ", move " .. q .. " (" .. tostring(a) .. " - " .. tostring(b) .. ")"
+								local function death(d)
+									if type(d) == "number" and d > 0 and Death[d] == nil and not FreezeDeath then
+										add(line, w .. ": death " .. d .. " does not exist (a random death is played instead)")
+									end
+								end
+								-- a jump inside the scene (0 = next): past the last move, the
+								-- game stops on main.kimmy's "move[currentMove]"
+								local function jump(v, what)
+									if v == OUT then
+										add(line, w .. ": '> end' " .. what .. " stops the game ('end' only works after 'go' and in EXIT)")
+									elseif type(v) == "number" and v > totalMoves and v < OUT then
+										add(line, w .. ": " .. what .. " goes to move " .. v .. ", the scene has only " .. totalMoves .. " (the game stops)")
+									end
+								end
+
+								if not NODEATH[t] then death(m[4]) end
+
+								if t == PATH and type(path[q]) == "table" then
+									local pt = path[q]
+									local leaves = pt[9] == OUT	-- go > end: the choices name scenes or levels
+									for i = 1, 7, 2 do
+										local v = pt[i + 1]
+										if pt[i] ~= 0 and type(v) == "number" then
+											if v > OUT then death(v - OUT)
+											elseif v == OUT or not leaves then jump(v, "in a PATH choice") end
+										end
+									end
+									if not leaves then
+										jump(pt[9], "in the PATH 'go'")
+										branch(line, w, "choice 1", pt[2], pt[4], pt[9])
+										if pt[5] ~= 0 then branch(line, w, "choice 2", pt[4], pt[6], pt[9]) end
+										if pt[7] ~= 0 then branch(line, w, "choice 3", pt[6], pt[8], pt[9]) end
+									end
+								elseif t == YESNO and type(path[q]) == "table" then
+									local pt = path[q]
+									for i = 1, 2 do
+										local v = pt[i]
+										if type(v) == "number" then
+											if v > OUT then death(v - OUT)
+											elseif v == OUT or pt[3] ~= OUT then jump(v, "in a YESNO choice") end
+										end
+									end
+									if pt[3] ~= OUT then branch(line, w, "'yes'", pt[1], pt[2], pt[3]) end
+								elseif t == TIMED then
+									for tt = (m[5] or q), (m[6] or q) do
+										local e = timed[tt]
+										if type(e) == "table" then
+											death(e[4])
+											if e[5] ~= nil then jump(e[5], "in a TIMED window") end
+										end
+									end
+								elseif t == CHOOSE then
+									local starts = {}
+									for _, c in pairs(choice) do
+										if type(c) == "table" and c[2] == false then death(c[3]) end
+										if type(c) == "table" and c[2] == true and type(c[3]) == "number" and c[3] > 0 then
+											jump(c[3], "in a CHOOSE answer")
+											if isMove(c[3]) then starts[#starts + 1] = c end
+										end
+									end
+									-- RPG style (tutorial): an answer's branch with no end runs into the
+									-- next answer's branch, unless it leaves the scene first (v29)
+									for _, c in ipairs(starts) do
+										local nxt = nil
+										for _, c2 in ipairs(starts) do
+											if c2[3] > c[3] and (nxt == nil or c2[3] < nxt) then nxt = c2[3] end
+										end
+										if nxt and c[4] == nil then
+											local leaves = false
+											for k = c[3], nxt - 1 do if leavesScene(k) then leaves = true end end
+											if not leaves then
+												add(line, w .. ": the answer \"" .. tostring(c[1]) .. "\" plays on into the moves of the next answer ("
+													.. nxt .. "): add 'go > name' under the CHOOSE")
+											end
+										elseif type(c[4]) == "number" and (c[4] < c[3] or c[4] > totalMoves) then
+											add(line, w .. ": the answer \"" .. tostring(c[1]) .. "\" ends at move " .. c[4] .. ", outside " .. c[3] .. " - " .. totalMoves)
+										end
+										if c[5] ~= nil then jump(c[5], "in a CHOOSE 'go'") end
+									end
+								elseif t == WAY and type(m[4]) == "number" and m[4] > 0 then
+									jump(m[4], "in this WAY")
+								end
+
+								if type(a) == "number" and type(b) == "number" then
+									if a > b then add(line, w .. ": starts after it ends") end
+									if not NOFRAMES[t] then
+										if a < s0 or b > s1 then
+											add(line, w .. ": outside its SCENE " .. s0 .. " - " .. s1)
+										end
+										if prev ~= nil and a <= prev then
+											add(line, w .. ": starts before move " .. prevQ .. " ends (" .. prev .. "), the frames in common are lost")
+										end
+										prev, prevQ = b, q
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return found, src
+
+end
+
+function kimmyCheckGame()
+
+	if gameChecked then return end
+
+	local saved = {}
+	for k, v in pairs(_G) do saved[k] = v end
+	local ok, found, src = pcall(runGameCheck)
+	local added = {}
+	for k, _ in pairs(_G) do if saved[k] == nil then added[#added + 1] = k end end
+	for _, k in ipairs(added) do rawset(_G, k, nil) end
+	for k, v in pairs(saved) do if rawget(_G, k) ~= v then rawset(_G, k, v) end end
+	gameChecked = true
+
+	if not ok then
+		print("KimmyScript check: stopped (" .. tostring(found) .. ")")
+		return
+	end
+	if movieFpsNote then print("KimmyScript: " .. src .. ": " .. movieFpsNote) end
+	if relativeFramesNote then print("KimmyScript: " .. src .. ": " .. relativeFramesNote) end
+
+	local file = DIR .. (src:gsub("%.[^%.]*$", "")) .. "-check.txt"
+	if #found == 0 then
+		if os ~= nil and os.remove ~= nil then pcall(os.remove, file) end
+		return
+	end
+	for _, l in ipairs(found) do print("KimmyScript check: " .. l) end
+	local f = io.open(file, "w")
+	if f then
+		f:write("KimmyScript check of " .. src .. ": " .. #found .. " thing(s) to fix in the game.\n")
+		f:write("The game still runs, but these spots will not play as written.\n")
+		f:write("Each line: file:line: where: what.\n\n")
+		for _, l in ipairs(found) do f:write(l, "\n") end
+		f:close()
+	end
+
+end
+
+-- 3. The game sheet: Sheet [[ ... ]] -------------------------------------------
+
+local DIRS = {
+	UP = "UP", DOWN = "DOWN", LEFT = "LEFT", RIGHT = "RIGHT",
+	U = "UP", D = "DOWN", L = "LEFT", R = "RIGHT",
+	UPLEFT = "UPLEFT", UPRIGHT = "UPRIGHT", DOWNLEFT = "DOWNLEFT", DOWNRIGHT = "DOWNRIGHT",
+	UL = "UPLEFT", UR = "UPRIGHT", DL = "DOWNLEFT", DR = "DOWNRIGHT",
+	B1 = "BUTTON1", B2 = "BUTTON2", B3 = "BUTTON3",
+	BUTTON1 = "BUTTON1", BUTTON2 = "BUTTON2", BUTTON3 = "BUTTON3",
+}
+local SHORTS = { UP = "U", DOWN = "D", LEFT = "L", RIGHT = "R", UPLEFT = "UL", UPRIGHT = "UR", DOWNLEFT = "DL",
+	DOWNRIGHT = "DR", BUTTON1 = "B1", BUTTON2 = "B2", BUTTON3 = "B3" }
+local MASHKINDS = { B1B2 = true, UD = true, DU = true, LR = true, RL = true }
+-- moves that take nothing but their death (old shortcuts included)
+local PLAIN = {}
+for _, n in ipairs({"ACTUP", "ACTDOWN", "ACTLEFT", "ACTRIGHT", "RUN", "MASH2", "MASHMIN", "MASHMAX",
+	"MASH2MIN", "MASH2MAX", "RUNMIN", "RUNMAX", "HOLDUP", "HOLDDOWN", "HOLDLEFT", "HOLDRIGHT", "HOLDBUT",
+	"LOOPLEFT", "LOOPRIGHT", "DOUBLE", "UD", "DU", "LR", "RL", "LETGO", "ANYTHING", "NOTHING"}) do PLAIN[n] = true end
+local SPECIAL = { COMBO = true, MULTI = true, LOOP = true, MASH = true, HOLD = true, PATH = true, YESNO = true,
+	TIMED = true, CHOOSE = true, SKIP = true, WAY = true, EXIT = true, WAYOUT = true, TOSCENE = true, TOLEVEL = true }
+local DEATHWORDS = { optional = -1, scored = -2, hidden = -3, random = 0 }
+local DIFFS = { normal = true, hard = true, extreme = true }
+local ENDCAPITAL = { GetReady = true, SupDeath = true }	-- offsetGetReadyEnd, not ...end
+local RESERVED = { death = true, next = true, ["end"] = true, skip = true, go = true, yes = true, no = true,
+	silent = true, blind = true,
+	scene = true, level = true, right = true, ["or"] = true, after = true, harder = true, easier = true,
+	timer = true, optional = true, scored = true, hidden = true, random = true }
+
+-- "1363 - 1378  RIGHT or B1  91  halberd  # note" -> tokens
+local function tokenize(line)
+	local toks, i, n = {}, 1, #line
+	while i <= n do
+		local c = line:sub(i, i)
+		if c:match("%s") then
+			i = i + 1
+		elseif c == "#" or line:sub(i, i + 1) == "--" then
+			break
+		elseif c == '"' then
+			local j = line:find('"', i + 1, true)
+			if not j then return nil, "a text in quotes is not closed" end
+			toks[#toks + 1] = { s = line:sub(i + 1, j - 1) }
+			i = j + 1
+		elseif c:match("%d") then
+			local num = line:match("^%d+%.?%d*", i)
+			toks[#toks + 1] = { n = tonumber(num) }
+			i = i + #num
+		elseif c:match("[%a_]") then
+			local w = line:match("^[%w_']+", i)
+			toks[#toks + 1] = { w = w, u = w:upper(), l = w:lower() }
+			i = i + #w
+		else
+			toks[#toks + 1] = { p = c }
+			i = i + 1
+		end
+	end
+	return toks
+end
+
+function Sheet(text)
+
+	local info = debug.getinfo(2, "Sl") or {}
+	local _, nl = text:gsub("\n", "")
+	local base = (info.currentline or nl + 1) - nl
+	local src = tostring(info.short_src or "sheet"):match("([^/\\]+)$") or "sheet"
+	local lineNo = 0
+
+	local function fail(msg, at)
+		error(src .. ":" .. (base + (at or lineNo) - 1) .. ": " .. msg, 0)
+	end
+	-- where each level, scene, move and death is in the .dirk, for the
+	-- start-up check (part 2, v26)
+	local function abs(n) return base + n - 1 end
+	local lineMap = { src = src, levels = {}, deaths = {} }
+
+	local sym = {}				-- names usable in "Menus + 4"
+	local deaths, tiers = {}, {}
+	local given = {}	-- GAME settings written in the sheet
+	local section, level, scene, mv = nil, nil, nil, nil
+	local levels = {}
+
+	-- reading helpers on a token list -------------------------------------
+	local T, p
+	local function peek(k) return T[p + (k or 0)] end
+	local function more() return p <= #T end
+	local function word() local t = T[p]; if t and t.w then p = p + 1; return t end end
+	local function isWord(l) local t = T[p]; return t and t.w and t.l == l end
+	local function isP(c) local t = T[p]; return t and t.p == c end
+
+	local function number(what)
+		local neg = false
+		if isP("-") and T[p + 1] and T[p + 1].n then neg = true; p = p + 1 end
+		local t = T[p]
+		if not t or not t.n then fail(what .. " expected") end
+		p = p + 1
+		return neg and -t.n or t.n
+	end
+
+	-- 2600, -1, or "Menus + 4"
+	local function value(what)
+		local t = T[p]
+		if t and t.w then
+			local v = sym[t.l]
+			if v == nil then v = _G[t.w] end
+			if type(v) ~= "number" then fail("unknown name '" .. t.w .. "' in " .. what) end
+			p = p + 1
+			if isP("+") then p = p + 1; v = v + number(what)
+			elseif isP("-") then p = p + 1; v = v - number(what) end
+			return v
+		end
+		return number(what)
+	end
+
+	local function range(what)
+		local a = value(what)
+		if not isP("-") then fail(what .. ": write it as start - end") end
+		p = p + 1
+		local b = value(what)
+		return a, b
+	end
+
+	local function dirWord(what)
+		local t = T[p]
+		if not t or not t.w or not DIRS[t.u] then fail(what .. ": a direction or a button expected (UP, LEFT, B1...)") end
+		p = p + 1
+		return _G[DIRS[t.u]]
+	end
+
+	local function deathValue(what)
+		local t = T[p]
+		if t and t.w and DEATHWORDS[t.l] then p = p + 1; return DEATHWORDS[t.l] end
+		if t and (t.n or (t.p == "-" and T[p + 1] and T[p + 1].n)) then return number(what) end
+		if FreezeDeath then return DEATHFREEZE end
+		if t and t.w then
+			fail(what .. ": '" .. t.w .. "' is not a death (a number, or optional / hidden / scored / random)")
+		end
+		fail(what .. ": the death is missing (a number, or optional / hidden / scored / random, or FreezeDeath yes in GAME)")
+	end
+
+	-- after ">": death 7, next, end, skip, scene 3, level 5, or a name
+	local function target(what)
+		if not isP(">") then fail(what .. ": '>' expected") end
+		p = p + 1
+		local t = T[p]
+		if not t or not t.w then fail(what .. ": where to? (death n, next, end, or a name)") end
+		p = p + 1
+		if t.l == "death" then return { death = number("death number") } end
+		if t.l == "next" then
+			-- '> next level' (v54): the next level, as EXIT > next level does
+			if isWord("level") then p = p + 1; return { nextlevel = true, line = lineNo } end
+			return { k = 0 }
+		end
+		if t.l == "end" then return { k = OUT, line = lineNo } end
+		if t.l == "skip" then return { skip = true } end
+		if t.l == "scene" then return { scene = number("scene number"), line = lineNo } end
+		if t.l == "level" then return { level = number("level number"), line = lineNo } end
+		if RESERVED[t.l] or DIRS[t.u] then fail(what .. ": '" .. t.w .. "' cannot be a move's name") end
+		return { name = t.l, line = lineNo }
+	end
+
+	local function done(what)
+		if more() then
+			local t = T[p]
+			fail(what .. ": '" .. (t.w or t.s or (t.n and tostring(t.n)) or t.p) .. "' not understood")
+		end
+	end
+
+	local function condition(ch)
+		if isWord("if") or isWord("until") then
+			local key = word().l == "if" and "ifbeaten" or "ifnotbeaten"
+			if not isWord("level") then fail("'level' expected") end
+			p = p + 1
+			ch[key] = number("level number")
+			if not isWord("beaten") then fail("'beaten' expected") end
+			p = p + 1
+		end
+	end
+
+	-- scenes and levels -----------------------------------------------------
+	local function finishScene()
+		if not scene then return end
+		-- v54: in a PATH, a YESNO or a CHOOSE, '> scene n', '> level n' and '> next
+		-- level' go through a TOSCENE / TOLEVEL the sheet adds right after the move
+		-- (as the tutorial's CHOOSE does by hand): it means what it says from any
+		-- scene, and mixes with branches and deaths. It starts where the move ends,
+		-- so the movie does not go back; after the last move of the scene it waits
+		-- for the scene's end, as the old 'no jump value' did. A choice that just
+		-- goes on (next) goes past them, to the next move, or ends the scene there.
+		local gensOf = {}
+		do
+			local i = 1
+			while i <= #scene.moves do
+				local m = scene.moves[i]
+				if m.kind == "PATH" or m.kind == "YESNO" or m.kind == "CHOOSE" then
+					local list = {}
+					local function add(tg) if type(tg) == "table" and (tg.scene or tg.level or tg.nextlevel) then list[#list + 1] = tg end end
+					if m.kind == "YESNO" then add(m.choices.yes); add(m.choices.no)
+					else for _, c in ipairs(m.choices) do add(c.to) end end
+					for _, ch in pairs(m.changes) do
+						add(ch.yes); add(ch.no)
+						for _, to in pairs(ch.dirs or {}) do add(to) end
+					end
+					if #list > 0 then
+						local last = scene.moves[i + 1] == nil
+						local b = last and math.max(m.b, scene.b - 1) or m.b
+						local gens, byKey = {}, {}
+						local function gen(kind, n)
+							return { a = m.b, b = b, type = kind, death = n, kind = "EXIT", line = m.line, gen = true,
+								changes = {}, choices = {}, windows = {} }
+						end
+						for _, tg in ipairs(list) do
+							local key = tg.level and ("L" .. tg.level) or tg.scene and ("S" .. tg.scene) or "N"
+							if not byKey[key] then
+								if tg.level then byKey[key] = gen(TOLEVEL, tg.level)
+								elseif tg.scene then byKey[key] = gen(TOSCENE, tg.scene)
+								else byKey[key] = gen(TOLEVEL, 0) end
+								gens[#gens + 1] = byKey[key]
+							end
+							tg.gen = byKey[key]
+						end
+						-- going on: the move after them, or the end of the scene (only when
+						-- a choice goes on: next, a YESNO side not given, a bare 'right')
+						local goesOn = false
+						local function on(tg) if tg == nil or (type(tg) == "table" and tg.k == 0) then goesOn = true end end
+						if m.kind == "YESNO" then on(m.choices.yes); on(m.choices.no)
+						elseif m.kind == "PATH" then for _, c in ipairs(m.choices) do on(c.to) end
+						else for _, c in ipairs(m.choices) do if c.right then on(c.to) end end end
+						for _, ch in pairs(m.changes) do for _, to in pairs(ch.dirs or {}) do on(to) end end
+						if not goesOn then
+							m.goOn = nil
+						elseif last then
+							m.goOn = gen(WAYOUT, 0)
+							gens[#gens + 1] = m.goOn
+						else
+							m.goOn = scene.moves[i + 1]
+						end
+						for k, g in ipairs(gens) do table.insert(scene.moves, i + k, g) end
+						gensOf[m] = true
+						i = i + #gens
+					end
+				end
+				i = i + 1
+			end
+		end
+		local idxOf = {}
+		for k, m in ipairs(scene.moves) do idxOf[m] = k end
+		local names = {}
+		for k, m in ipairs(scene.moves) do
+			if m.name then
+				if names[m.name] then fail("the name '" .. m.name .. "' is used twice in this scene", m.line) end
+				names[m.name] = k
+			end
+		end
+		local used = {}
+		local function resolve(tg, what)
+			if tg.gen then return idxOf[tg.gen] end
+			if tg.nextlevel then fail(what .. ": '> next level' does not work here", tg.line) end
+			if tg.name then
+				local k = names[tg.name]
+				if not k then fail(what .. ": no move called '" .. tg.name .. "' in this scene", tg.line) end
+				used[tg.name] = true
+				return k
+			end
+			if tg.death then return 1000 + tg.death end
+			-- 'end' only says "nothing to join" after go (the old OUT, v27)
+			if tg.k == OUT and not what:match("go$") then
+				fail(what .. ": '> end' goes nowhere: write a move's name, next, death n, scene n or level n", tg.line)
+			end
+			if (tg.scene or tg.level) and what == "WAY" then
+				fail(what .. ": '> scene n' / '> level n' do not work here: aim at an EXIT move (EXIT > level n)", tg.line)
+			end
+			if tg.scene or tg.level then
+				scene.out[#scene.out + 1] = { level = tg.level ~= nil, line = tg.line }
+				return tg.scene or tg.level
+			end
+			return tg.k
+		end
+		local nChoose = 0
+		for _, m in ipairs(scene.moves) do
+			if m.kind == "CHOOSE" then
+				nChoose = nChoose + 1
+				if nChoose > 1 then fail("only one CHOOSE per scene (its answers share one table)", m.line) end
+			end
+		end
+		local rows = {}
+		for k, m in ipairs(scene.moves) do
+			local row = { m.a, m.b, m.type, m.death, m.f5, m.f6 }
+			if m.gen then row.generated = true end
+			if m.kind == "PATH" or m.kind == "YESNO" then
+				-- The choices go either to moves of this scene or out of it (scene n,
+				-- level n). Out of it, there is nothing to join: the jump value is OUT
+				-- by itself, as in the old "no option 6" (v27). 'go > end' still works.
+				local function build(choices, join)
+					local pt = {}
+					local outJump, inJump = false, false
+					for _, c in pairs(choices) do
+						local to = c.to or c
+						if type(to) == "table" then
+							if (to.scene or to.level) and not to.gen then outJump = true end
+							if to.name then inJump = true end
+						end
+					end
+					if outJump and inJump then
+						fail(m.kind .. ": the choices go either to moves of this scene or to 'scene n' / 'level n', not both", m.line)
+					end
+					if outJump and join and join.k ~= OUT then
+						fail(m.kind .. ": the choices leave the scene, so 'go' has nothing to join (leave it out)", m.line)
+					end
+					local j = 0
+					if join then j = resolve(join, m.kind .. " go") elseif outJump then j = OUT end
+					-- with added TOSCENE / TOLEVEL, 'go on' (0) goes past them (v54)
+					local function goOn(v) if v == 0 and m.goOn then return idxOf[m.goOn] end return v end
+					if m.kind == "PATH" then
+						local list = {}
+						for i, c in ipairs(choices) do list[i] = { dir = c.dir, v = goOn(resolve(c.to, "PATH")), i = i } end
+						-- the branches first, in the movie's order: each one ends before the
+						-- next one's move (the tutorial's rule); then the deaths and the
+						-- ways out, as written. 'next' (0) is the first branch: the move
+						-- after this one (v54: the choices may be written in any order).
+						-- Branches first (v55): the "Next Move" rewind, after a death on the
+						-- PATH, plays on as if its first choice had been taken
+						local function isBranch(v)
+							return v == 0 or (v > 0 and v < OUT and scene.moves[v] ~= nil and not scene.moves[v].gen)
+						end
+						table.sort(list, function(x, y)
+							local bx, by = isBranch(x.v), isBranch(y.v)
+							if bx ~= by then return bx end
+							if bx and x.v ~= y.v then return x.v < y.v end
+							return x.i < y.i
+						end)
+						for i, c in ipairs(list) do
+							pt[2 * i - 1] = c.dir
+							pt[2 * i] = c.v
+						end
+						pt.join = j
+					else
+						pt[1] = goOn(choices.yes and resolve(choices.yes, "YESNO yes") or 0)
+						pt[2] = goOn(choices.no and resolve(choices.no, "YESNO no") or 0)
+						pt[3] = j
+					end
+					return pt
+				end
+				row.path = build(m.choices, m.join)
+				for d, ch in pairs(m.changes) do
+					local c2 = {}
+					if m.kind == "PATH" then
+						for i, c in ipairs(m.choices) do c2[i] = { dir = c.dir, to = ch.dirs[c.dir] or c.to } end
+						for dir, to in pairs(ch.dirs) do
+							local found = false
+							for _, c in ipairs(m.choices) do if c.dir == dir then found = true end end
+							if not found then fail(d .. ": this PATH has no such choice", ch.line) end
+						end
+					else
+						c2 = { yes = ch.yes or m.choices.yes, no = ch.no or m.choices.no }
+					end
+					local o = { path = build(c2, ch.join or m.join), ifbeaten = ch.ifbeaten, ifnotbeaten = ch.ifnotbeaten }
+					if ch.death then o[4] = ch.death end
+					row[d] = o
+				end
+			else
+				for d, ch in pairs(m.changes) do
+					if ch.join or next(ch.dirs) then fail(d .. ": only a PATH or a YESNO has choices to change", ch.line) end
+					local o = { ifbeaten = ch.ifbeaten, ifnotbeaten = ch.ifnotbeaten }
+					if ch.death then o[4] = ch.death end
+					row[d] = o
+				end
+			end
+			if m.kind == "TIMED" then
+				row.timed = {}
+				for i, w in ipairs(m.windows) do
+					local e = { w.dir, w.a, w.b, w.death }
+					if w.to then e[5] = w.to.skip and 0 or resolve(w.to, "TIMED") end
+					row.timed[i] = e
+				end
+			end
+			if m.kind == "CHOOSE" then
+				-- With 'go', each right answer that goes to a move is a branch (tutorial,
+				-- RPG style): it plays up to the move before the next branch in the movie,
+				-- then goes to the 'go' move: {text, true, move, last move, join} (v29).
+				row.choices = {}
+				local tg = {}
+				for i, c in ipairs(m.choices) do
+					if c.right and c.to then tg[i] = resolve(c.to, "CHOOSE") end
+					-- going on past added TOSCENE / TOLEVEL (v54)
+					if c.right and not c.to and m.goOn then tg[i] = idxOf[m.goOn] end
+				end
+				-- with 'go', a right answer that goes on ('next', or 'right' alone) is
+				-- the branch of the move after the CHOOSE (v54)
+				if m.join then
+					for i, c in ipairs(m.choices) do
+						if c.right and (tg[i] == nil or tg[i] == 0) and scene.moves[idxOf[m] + 1] then tg[i] = idxOf[m] + 1 end
+					end
+				end
+				local j = nil
+				if m.join then
+					j = resolve(m.join, "CHOOSE go")
+					if j == OUT then fail("CHOOSE: 'go > end' means nothing here: go > a move's name", m.line) end
+					if next(tg) == nil then fail("CHOOSE: no right answer goes to a move, so 'go' has nothing to join", m.line) end
+				end
+				for i, c in ipairs(m.choices) do
+					if c.right then
+						local t = tg[i] or 0
+						local e = { c.text, true, t }
+						if j and t > 0 then
+							local nxt = nil
+							for _, u in pairs(tg) do if u > t and (nxt == nil or u < nxt) then nxt = u end end
+							e[4] = (nxt or j) - 1
+							e[5] = j
+						end
+						row.choices[i] = e
+					else
+						row.choices[i] = { c.text, false, c.death }
+					end
+				end
+			end
+			if m.kind == "WAY" and m.to then row[4] = resolve(m.to, "WAY") end
+			rows[k] = row
+		end
+		for k, m in ipairs(scene.moves) do
+			if m.name and not used[m.name] then
+				fail("the name '" .. m.name .. "' is not used by any jump (misspelt word?)", m.line)
+			end
+		end
+		local sc = { scene.a, scene.b }
+		for _, r in ipairs(rows) do sc[#sc + 1] = r end
+		for d, ch in pairs(scene.changes) do sc[d] = ch end
+		local mlines = {}
+		for k, m in ipairs(scene.moves) do mlines[k] = abs(m.line) end
+		level.scenes[#level.scenes + 1] = { sc = sc, line = scene.line, out = scene.out, mlines = mlines }
+		scene = nil
+		mv = nil
+	end
+
+	local function finishLevel()
+		finishScene()
+		if not level then return end
+		if not level.intro then fail("LEVEL " .. tostring(level.key) .. ": intro a - b is missing", level.line) end
+		if #level.scenes == 0 then fail("LEVEL " .. tostring(level.key) .. ": no SCENE", level.line) end
+		for i, s in ipairs(level.scenes) do
+			for _, o in ipairs(s.out) do
+				if o.level and i < #level.scenes then
+					fail("'> level n' only works from the last scene (here it would go to scene n)", o.line)
+				elseif not o.level and i == #level.scenes then
+					fail("'> scene n' does not work from the last scene (it would go to level n)", o.line)
+				end
+			end
+		end
+		local blk = { title = level.title, intro = level.intro, replay = level.replay, mirror = level.mirror,
+			deathmirror = level.deathmirror, selectframe = level.image }
+		for i, s in ipairs(level.scenes) do blk[i] = s.sc end
+		levels[#levels + 1] = { key = level.key, blk = blk, line = level.line }
+		local where = { line = abs(level.line), scenes = {} }
+		for i, s in ipairs(level.scenes) do where.scenes[i] = { line = abs(s.line), moves = s.mlines } end
+		lineMap.levels[level.key] = where
+		level = nil
+	end
+
+	-- one move line -----------------------------------------------------------
+	local function moveLine()
+		local m = { line = lineNo, changes = {}, choices = {}, windows = {} }
+		m.a, m.b = range("move frames")
+		local t = word()
+		if not t then fail("a move expected after the frames (UP, B1, PATH...)") end
+		local u = t.u
+		if DIRS[u] then
+			m.kind = "BASIC"; m.type = _G[DIRS[u]]
+			if isWord("or") then p = p + 1; m.f5 = dirWord("or") end
+			m.death = deathValue(u)
+		elseif PLAIN[u] then
+			m.kind = "BASIC"; m.type = _G[u]
+			-- NOTHING silent: no sound, no score; NOTHING blind: not shown either (v29)
+			if u == "NOTHING" and isWord("silent") then p = p + 1; m.f5 = 1
+			elseif u == "NOTHING" and isWord("blind") then p = p + 1; m.f5 = 2 end
+			m.death = deathValue(u)
+		elseif u == "COMBO" then
+			m.kind = u; m.type = COMBO
+			m.f5 = dirWord("COMBO")
+			if not isP("+") then fail("COMBO: write it as COMBO LEFT + B1") end
+			p = p + 1
+			m.f6 = dirWord("COMBO")
+			m.death = deathValue(u)
+		elseif u == "MULTI" or u == "LOOP" then
+			m.kind = u; m.type = _G[u]
+			local s = peek()
+			if s and s.s then
+				m.f5 = s.s; p = p + 1
+				if isWord("after") then p = p + 1; m.f6 = number("after") end
+			elseif u == "MULTI" then
+				local t1 = T[p]
+				m.f5 = dirWord("MULTI")
+				local x = peek()
+				if x and x.w and x.l:match("^x%d+$") then
+					m.f6 = tonumber(x.l:sub(2)); p = p + 1
+				else
+					local seq = { SHORTS[DIRS[t1.u]] }
+					while true do
+						if isP(",") then p = p + 1 end
+						local t = T[p]
+						if t and t.w and DIRS[t.u] then
+							seq[#seq + 1] = SHORTS[DIRS[t.u]]
+							p = p + 1
+						else
+							break
+						end
+					end
+					if #seq < 2 then fail("MULTI: write MULTI L B1 L or MULTI UP x3") end
+					m.f5 = table.concat(seq, ",")
+					if isWord("after") then p = p + 1; m.f6 = number("after") end
+				end
+			else
+				local t1 = T[p]
+				local start = t1 and t1.w and ({ UP = "U", DOWN = "D", LEFT = "L", RIGHT = "R", U = "U", D = "D", L = "L", R = "R" })[t1.u]
+				if not start then fail("LOOP: write it as LOOP U 1 CW (it starts U, D, L or R)") end
+				p = p + 1
+				local sign, lw = nil, nil
+				for _ = 1, 2 do
+					local t = T[p]
+					if t and t.w and not sign and (t.u == "CW" or t.u == "CCW") then
+						sign = t.u == "CW" and "+" or "-"; p = p + 1
+					elseif t and t.w and not lw and (t.u == "Q" or t.u == "H") then
+						lw = t.u; p = p + 1
+					elseif t and t.n and not lw and t.n >= 1 and t.n <= 9 and t.n == math.floor(t.n) then
+						lw = tostring(t.n); p = p + 1
+					end
+				end
+				if not lw then fail("LOOP: how far expected after " .. t1.w .. ": Q (a quarter), H (a half) or 1 to 9 turns, as in LOOP U 3 CW") end
+				if not sign then fail("LOOP: CW or CCW expected after " .. lw .. " (CW: clockwise, CCW: the other way), as in LOOP U 3 CW") end
+				local str = start .. "," .. sign .. "," .. lw
+				local b = T[p]
+				if b and b.w and (b.u == "B1" or b.u == "B2" or b.u == "B3") then str = str .. "," .. b.u; p = p + 1 end
+				m.f5 = str
+				if isWord("after") then p = p + 1; m.f6 = number("after") end
+			end
+			m.death = deathValue(u)
+		elseif u == "MASH" then
+			m.kind = u; m.type = MASH
+			local x = peek()
+			if x and x.w and MASHKINDS[x.u] then m.f5 = _G[x.u]; p = p + 1
+			elseif x and x.w and DIRS[x.u] then m.f5 = dirWord("MASH") end
+			if isWord("harder") then p = p + 1; m.f6 = number("harder")
+			elseif isWord("easier") then p = p + 1; m.f6 = -number("easier") end
+			m.death = deathValue(u)
+		elseif u == "HOLD" then
+			m.kind = u; m.type = HOLD
+			m.f5 = dirWord("HOLD")
+			m.death = deathValue(u)
+		elseif u == "PATH" or u == "YESNO" or u == "TIMED" then
+			m.kind = u; m.type = _G[u]
+			m.death = deathValue(u)
+		elseif u == "CHOOSE" then
+			m.kind = u; m.type = CHOOSE
+			-- "the question" (option 5) and timer n (option 6), both optional (v29)
+			for _ = 1, 2 do
+				local x = peek()
+				if x and x.s then
+					if m.f5 then fail("CHOOSE: one question only") end
+					m.f5 = x.s; p = p + 1
+				elseif isWord("timer") then
+					if m.f6 then fail("CHOOSE: timer given twice") end
+					p = p + 1; m.f6 = number("timer")
+				end
+			end
+		elseif u == "SKIP" then
+			m.kind = u; m.type = SKIP; m.death = 0
+			-- hidden, and "a text" shown on screen (option 5, v29), in any order
+			for _ = 1, 2 do
+				local x = peek()
+				if isWord("hidden") then p = p + 1; m.death = -3
+				elseif x and x.s then
+					if m.f5 then fail("SKIP: one text only") end
+					m.f5 = x.s; p = p + 1
+				end
+			end
+		elseif u == "WAY" then
+			m.kind = u; m.type = WAY; m.death = 0
+			if isP(">") then m.to = target("WAY") end
+		elseif u == "EXIT" then
+			m.kind = u; m.type = WAYOUT; m.death = 0
+			local n1, n2 = T[p + 1], T[p + 2]
+			if isP(">") and n1 and n1.w and n1.l == "next" and n2 and n2.w and n2.l == "level" then
+				-- the next level, even from a scene that is not the last (TOLEVEL 0, v29)
+				p = p + 3; m.type = TOLEVEL; m.death = 0
+			elseif isP(">") then
+				local tg = target("EXIT")
+				if tg.scene then m.type = TOSCENE; m.death = tg.scene
+				elseif tg.level then m.type = TOLEVEL; m.death = tg.level
+				else fail("EXIT: write EXIT, EXIT > scene n or EXIT > level n") end
+			end
+		elseif u == "WAYOUT" or u == "TOSCENE" or u == "TOLEVEL" then
+			m.kind = u; m.type = _G[u]; m.death = number(u)
+		else
+			fail("unknown move '" .. t.w .. "'")
+		end
+		local nm = peek()
+		if nm and nm.w and not RESERVED[nm.l] and not DIRS[nm.u] and not SPECIAL[nm.u] and not PLAIN[nm.u] then
+			m.name = nm.l; p = p + 1
+		end
+		done("move")
+		scene.moves[#scene.moves + 1] = m
+		mv = m
+	end
+
+	-- a line under a move: choice, window, go, or a difficulty change ---------
+	local function changeLine(d)
+		local ch = { line = lineNo, dirs = {} }
+		local target_is_move = mv ~= nil
+		if not target_is_move then
+			while more() do
+				if isWord("start") then p = p + 1; ch.start = value("start")
+				elseif isWord("finish") then p = p + 1; ch.finish = value("finish")
+				elseif isWord("if") or isWord("until") then condition(ch)
+				else done(d) end
+			end
+			if scene.changes[d] then fail(d .. ": already given for this scene") end
+			scene.changes[d] = { start = ch.start, finish = ch.finish, ifbeaten = ch.ifbeaten, ifnotbeaten = ch.ifnotbeaten }
+			return
+		end
+		while more() do
+			if isWord("go") then p = p + 1; ch.join = target(d .. " go")
+			elseif isWord("yes") then p = p + 1; ch.yes = target(d .. " yes")
+			elseif isWord("no") then p = p + 1; ch.no = target(d .. " no")
+			elseif isWord("if") or isWord("until") then condition(ch)
+			elseif peek() and peek().w and DIRS[peek().u] and T[p + 1] and T[p + 1].p == ">" then
+				local dir = dirWord(d); ch.dirs[dir] = target(d)
+			else
+				ch.death = deathValue(d)
+			end
+		end
+		if mv.changes[d] then fail(d .. ": already given for this move") end
+		mv.changes[d] = ch
+	end
+
+	local function subLine()
+		local t = peek()
+		if not mv then fail("this line belongs under a move") end
+		local k = mv.kind
+		if t.w and t.l == "go" then
+			if k ~= "PATH" and k ~= "YESNO" and k ~= "CHOOSE" then fail("'go' only goes under a PATH, a YESNO or a CHOOSE") end
+			if mv.join then fail("'go' given twice") end
+			p = p + 1; mv.join = target("go"); done("go")
+		elseif t.w and (t.l == "yes" or t.l == "no") then
+			if k ~= "YESNO" then fail("'" .. t.l .. "' only goes under a YESNO") end
+			p = p + 1; mv.choices[t.l] = target(t.l); done(t.l)
+		elseif t.s then
+			if k ~= "CHOOSE" then fail("a text in quotes only goes under a CHOOSE") end
+			p = p + 1
+			local c = { text = t.s }
+			if isWord("right") then
+				p = p + 1; c.right = true
+				if isP(">") then c.to = target("CHOOSE") end
+			elseif isP(">") then
+				-- v54: "text" > death n / next / a name / scene n / level n / next level
+				local to = target("CHOOSE")
+				if to.death then c.death = to.death
+				elseif to.skip or to.k == OUT then fail("CHOOSE: > death n, next, a move's name, scene n, level n or next level")
+				else
+					c.right = true
+					if to.k ~= 0 then c.to = to end
+				end
+			else
+				c.death = deathValue("CHOOSE")
+			end
+			done("CHOOSE")
+			mv.choices[#mv.choices + 1] = c
+		elseif t.w and DIRS[t.u] then
+			if k == "PATH" then
+				local dir = dirWord("PATH")
+				if #mv.choices == 4 then fail("PATH: 4 choices at most") end
+				local to = target("PATH")
+				if to.skip then fail("PATH: death n, next, end, scene n, level n or a name") end
+				mv.choices[#mv.choices + 1] = { dir = dir, to = to }
+				done("PATH")
+			elseif k == "TIMED" then
+				local w = { dir = dirWord("TIMED") }
+				w.a, w.b = range("TIMED window")
+				-- the jump may come before the death (v24 layout) or after it
+				local function jump()
+					w.to = target("TIMED")
+					if w.to.death or w.to.scene or w.to.level or w.to.nextlevel then fail("TIMED: '> skip' or '> a name'") end
+				end
+				if isP(">") then
+					jump()
+					w.death = deathValue("TIMED")
+				else
+					w.death = deathValue("TIMED")
+					if isP(">") then jump() end
+				end
+				done("TIMED")
+				mv.windows[#mv.windows + 1] = w
+			else
+				fail("this line belongs under a PATH or a TIMED")
+			end
+		elseif t.w then
+			fail("'" .. t.w .. "' not understood here")
+		else
+			fail("line not understood")
+		end
+	end
+
+	-- the sheet, line by line ----------------------------------------------------
+	for raw in (text .. "\n"):gmatch("(.-)\r?\n") do
+		lineNo = lineNo + 1
+		local toks, err = tokenize(raw)
+		if not toks then fail(err) end
+		T, p = toks, 1
+		if #T == 0 then
+			-- blank or comment
+		else
+			local first = T[1]
+			local head = first.w and first.u
+			local upline = raw:gsub("#.*", ""):gsub("^%s+", ""):gsub("%s+$", ""):upper()
+			if upline == "GAME" or upline == "CLIPS" or upline == "MENU FRAMES" or upline == "MENUS"
+				or upline == "DEATHS" or upline == "TIERS" then
+				finishLevel()
+				section = upline == "MENUS" and "MENU FRAMES" or upline
+			elseif head == "LEVEL" then
+				finishLevel()
+				section = "LEVEL"
+				p = 2
+				local key
+				if isWord("secret") then p = p + 1; key = levelSecret else key = number("level number") end
+				local title = raw:gsub("#.*", ""):match("^%s*%a+%s+%S+%s*(.-)%s*$") or ""
+				if title == "" then fail("LEVEL " .. tostring(key) .. ": the title is missing") end
+				for _, l in ipairs(levels) do if l.key == key then fail("LEVEL " .. tostring(key) .. " given twice") end end
+				level = { key = key, title = title, scenes = {}, line = lineNo }
+			elseif section == "LEVEL" then
+				if head == "SCENE" then
+					finishScene()
+					p = 2
+					scene = { moves = {}, changes = {}, line = lineNo, out = {} }
+					scene.a, scene.b = range("SCENE")
+					done("SCENE")
+				elseif first.n then
+					if not scene then fail("a move line comes after a SCENE line") end
+					moveLine()
+				elseif first.w and DIFFS[first.l] and T[2] and T[2].p == ":" then
+					if not scene then fail(first.l .. ": belongs under a SCENE or a move") end
+					p = 3
+					changeLine(first.l)
+				elseif not scene then
+					while more() do
+						local w = word()
+						if not w then fail("level setting expected (intro, replay, mirror, deathmirror, image)") end
+						if w.l == "intro" then level.intro = { range("intro") }
+						elseif w.l == "replay" then level.replay = value("replay")
+						elseif w.l == "mirror" then level.mirror = value("mirror")
+						elseif w.l == "deathmirror" then level.deathmirror = value("deathmirror")
+						elseif w.l == "image" then level.image = value("image")
+						else fail("unknown level setting '" .. w.w .. "' (intro, replay, mirror, deathmirror, image)") end
+					end
+				else
+					subLine()
+				end
+			elseif section == "GAME" then
+				local name = word()
+				if not name then fail("GAME: a setting name expected") end
+				local v
+				local t = peek()
+				if t == nil then fail(name.w .. ": the value is missing") end
+				if t.s then v = t.s; p = p + 1
+				elseif t.w and (t.l == "yes" or t.l == "no") then v = t.l == "yes"; p = p + 1
+				elseif t.w and (t.l == "true" or t.l == "false") then v = t.l == "true"; p = p + 1
+				elseif name.w == "PlayOrder" then
+					v = {}
+					while more() do v[#v + 1] = number("PlayOrder") end
+				else v = value(name.w) end
+				done(name.w)
+				if name.w == "RandomDeaths" then totalDeath = v
+				else _G[name.w] = v end
+				given[name.w] = true
+				if type(v) == "number" then sym[name.l] = v end
+			elseif section == "CLIPS" then
+				local name = word()
+				if not name then fail("CLIPS: a clip name expected") end
+				local a = value(name.w)
+				_G["offset" .. name.w] = a
+				sym[name.l] = a
+				if isP("-") then
+					p = p + 1
+					_G["offset" .. name.w .. (ENDCAPITAL[name.w] and "End" or "end")] = value(name.w)
+				end
+				done(name.w)
+			elseif section == "MENU FRAMES" then
+				local name = word()
+				if not name then fail("MENU FRAMES: a name expected") end
+				local v = value(name.w)
+				done(name.w)
+				if name.w == "Menus" then offsetMenus = v else _G["frame" .. name.w] = v end
+				sym[name.l] = v
+			elseif section == "DEATHS" then
+				local a = value("death")
+				local b
+				if isP("-") then
+					p = p + 1; b = value("death")
+				else
+					if a ~= #deaths + 1 then fail("death " .. (#deaths + 1) .. " expected here, not " .. a) end
+					a, b = range("death")
+				end
+				done("death")
+				deaths[#deaths + 1] = { a, b }
+				lineMap.deaths[#deaths] = abs(lineNo)
+			elseif section == "TIERS" then
+				local tier = {}
+				while more() do tier[#tier + 1] = number("level number") end
+				tiers[#tiers + 1] = tier
+			else
+				fail("this line comes before any GAME / CLIPS / MENU FRAMES / DEATHS / LEVEL section")
+			end
+		end
+	end
+	finishLevel()
+	lineNo = nl + 1
+
+	if #deaths > 0 then Deaths = deaths end
+	kimmySheetLines = lineMap
+	if #tiers > 0 then
+		Tiers[0] = { #tiers }
+		for i, t in ipairs(tiers) do Tiers[i] = t; Tiers[0][i + 1] = #t end
+	end
+	-- a TIERS section means the tier mode is offered; a LEVEL SECRET means
+	-- the secret level is allowed (unless GAME says otherwise)
+	if #tiers > 0 and not given.AllowTier then AllowTier = true end
+	if not given.AllowSecret then
+		AllowSecret = false
+		for _, l in ipairs(levels) do if l.key == levelSecret then AllowSecret = true end end
+	end
+	if not given.IngameDiffchoice and frameEasy ~= nil and frameNormal ~= nil and frameHard ~= nil then IngameDiffchoice = true end
+	if not given.RelativeFrames and RelativeFrames ~= true then
+		local seen, before = 0, 0
+		for _, l in ipairs(levels) do
+			local ia = l.blk.intro and l.blk.intro[1]
+			if ia and #l.blk > 0 then
+				seen = seen + 1
+				for i = 1, #l.blk do if l.blk[i][1] and l.blk[i][1] < ia then before = before + 1; break end end
+			end
+		end
+		if before * 2 > seen then
+			RelativeFrames = true
+			relativeFramesNote = "RelativeFrames yes is missing (" .. before .. " of " .. seen .. " levels have a scene before their intro): frames are counted from each intro, write RelativeFrames yes in GAME"
+		end
+	end
+	for _, l in ipairs(levels) do
+		local ok, e = pcall(function() Level[l.key] = l.blk end)
+		if not ok then
+			fail("LEVEL " .. tostring(l.key) .. ": " .. tostring(e):gsub("^.-Level%[[^%]]*%]: ", ""), l.line)
+		end
+	end
+
+end

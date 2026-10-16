@@ -1,0 +1,680 @@
+Tout-en-un v38 : correctifs de la review + langues + .zdirk + Downloader
+======================================================================
+
+Remplace TOUS les zips precedents de la review (tout-en-un v1 a v37
+compris). A installer AVEC KimmyScript v14.
+dirk.exe CHANGE (JoystickWizard.cpp) : a recompiler.
+
+NOUVEAU (v38) -- Start "plus reconnu" dans l'assistant (R36S)
+----------------------------------------------------------------------
+- Apres les 4 directions faites au D-pad, l'assistant demande "configurer
+  aussi l'autre entree (stick) ?" juste avant l'etape Start. En v37, Start
+  valait "oui" sur cet ecran : le joueur qui appuyait sur Start pour
+  l'etape suivante lancait sans le voir un second passage reserve au
+  stick, ou les boutons sont ignores -- Start semblait ne plus marcher.
+  Seule l'action 1 valide desormais (action 2 = non / retour).
+- Test tools/e2e/wizard_nav complete avec ce cas exact : v37 echoue,
+  v38 passe.
+
+NOUVEAU (v37) -- assistant manette sans touche F9
+----------------------------------------------------------------------
+- Nouvelle fonction Lua dirkOpenJoystickWizard() : ouvre l'assistant
+  comme F9. KimmyScript v13 l'appelle depuis la nouvelle entree
+  "Controller Setup (F9)" de Dirk Options (N/A avec un Dirk plus ancien).
+- Sans clavier, l'assistant se pilote avec les commandes du jeu
+  (controls.cfg, profils deja enregistres) sur tous ses ecrans de choix :
+  haut/bas = choisir, action 1 ou start = valider, action 2 ou EXIT_MENU
+  = retour/annuler. Pendant l'enregistrement des boutons rien ne change
+  (chaque bouton est une affectation ; un bouton absent passe tout seul
+  apres 8 s). Le clavier marche toujours comme avant.
+- F10/F11/F12/+/- n'agissent plus pendant que l'assistant est ouvert.
+- Les lignes d'aide trop larges (ecran 640x480) sont reduites.
+Verifie : nouveau test tools/e2e/wizard_nav (ouverture par le script,
+choix de la portee, choix de la manette, enregistrement, fermeture par
+action 2, aucune touche transmise au jeu pendant ce temps) -- le Dirk
+v36 y echoue ; les 27 tests passent ; Dragon's Lair reel : Dirk Options
+-> Controller Setup -> assistant ouvert, pilote et ferme sans F9
+(captures).
+
+NOUVEAU (v36) -- "Too many open files" apres une erreur de script
+----------------------------------------------------------------------
+- Sur la R36S, une erreur de KimmyScript (readSave, s1.cfg lu vide) se
+  repetait a chaque image ; a chaque fois le fichier ouvert par io.input
+  restait ouvert (l'erreur saute le io.close). En quelques secondes :
+  "Too many open files", puis plus aucun fichier lisible (game.cfg,
+  sauvegardes). Dirk lance maintenant un ramasse-miettes complet de Lua
+  apres chaque erreur de script : ces fichiers sont refermes aussitot.
+- Mesure (tools/e2e/script_error_files) : meme erreur a chaque image
+  pendant 8 s ; Dirk d'avant : 66, 142, 219, 295, 371, 447... fichiers
+  ouverts ; Dirk v36 : 8 fichiers, stable.
+- Medias des jeux (Batocera/ArkOS) : marquee.jpg accepte comme
+  marquee.png.
+Verifie : les 26 tests de Dirk passent (audio_tracks_e2e repasse seul,
+instable connu) ; programmes Linux x86_64 et ARM64 reconstruits.
+
+NOUVEAU (v35) -- ecran noir sur R36S, vraie cause
+----------------------------------------------------------------------
+- Le dirk.log de la R36S avec la v34 : pour chaque format d'image,
+  "Couldn't find matching EGL config". SDL demandait de l'OpenGL de PC
+  (notre SDL3 est compile pour PC et consoles a la fois) ; le pilote Mali
+  des consoles ne fait que de l'OpenGL ES : aucune configuration ne
+  correspondait. SDL ne choisit OpenGL ES tout seul que quand il est
+  compile pour une seule marque de puce (Raspberry Pi, Rockchip).
+- Dirk demande donc OpenGL ES 2 quand il tourne sans bureau (KMSDRM :
+  consoles, Batocera sans X11), et le rendu GLES2 de SDL ; si la fenetre
+  echoue quand meme, un second essai avec les reglages de SDL. DIRK_GLES=1
+  force le meme choix ailleurs. Lignes "[dirk] screen:" et
+  "[dirk] renderer:" dans le log.
+Verifie : le test des bezels repasse en entier avec le rendu OpenGL ES
+(DIRK_GLES=1, 16 controles sur captures : image, couleurs, bezel) ;
+version ARM emulee : lancement OK. Le test des sous-titres echoue ici
+depuis que la machine de test n'a plus que 2 processeurs, AVEC ou SANS
+ce changement (verifie avec la v34) : delais du test, pas Dirk.
+PAS verifie sur une vraie R36S.
+
+NOUVEAU (v34) -- ecran noir sur R36S (ArkOS)
+----------------------------------------------------------------------
+- Sur la R36S, Dirk s'arretait a l'ouverture de l'ecran : "SDL_CreateWindow
+  failed: Could not create EGL window surface". SDL3 exigeait un seul
+  format d'image (ARGB8888) que le pilote de ces consoles (Mali) peut
+  refuser. Correctif officiel de SDL3 du 10/09/2026 (essaie les autres
+  formats), applique a notre SDL3 : tools/patches/sdl3-kmsdrm-surface-
+  formats.patch, applique tout seul par tools/build_linux_bundle_zig.sh.
+- Le lanceur ArkOS ecrit dans dirk.log les messages de SDL sur l'ecran
+  (formats essayes, erreurs EGL) et dit quand PortMaster n'est pas trouve.
+- Linux : plus de tentative audio "wasapi" (propre a Windows).
+Verifie : SDL3 et Dirk reconstruits (x86_64, ARM64, glibc 2.29) ; les 25
+tests passent ; lancement sur carte ArkOS simulee. PAS verifie sur une
+vraie R36S : le correctif est celui de SDL, le prochain dirk.log dira
+quel format a ete retenu ou pourquoi aucun ne passe.
+
+NOUVEAU (v33) -- bezels automatiques, forme reelle de l'image
+----------------------------------------------------------------------
+- Un bezel n'est accessible que s'il y a de la place a cote de l'image :
+  l'ecran (celui ou est la fenetre) doit etre au moins 10 % plus large
+  que l'image. Video 4:3 sur ecran 4:3 (borne, consoles 640x480) ou
+  video 16:9 sur ecran 16:9 : pas de bezel, F11 ne fait rien, le menu
+  affiche N/A. Le choix enregistre du joueur n'est pas efface : le meme
+  jeu sur un ecran large retrouve son bezel. Pas de message.
+- Un bezel dont la fenetre n'a pas la forme de la video (tolerance 5 %)
+  est ignore pour ce jeu, avec une ligne dans le log : avant, une video
+  16:9 etait ecrasee dans une fenetre 4:3.
+- La forme des pixels de la video est respectee (comme VLC/mpv) : un
+  720x480 a pixels 8:9 (.m2v Hypseus typique) s'affiche en 4:3 et non
+  plus en 3:2. Ligne "[dirk] video shape:" dans le log quand les pixels
+  ne sont pas carres ; rien ne change pour les videos a pixels carres.
+- Fichiers : src/core/BezelFit.h (nouveau), main.cpp, Bezel.h/.cpp,
+  EngineContext.h, lua/api_singe.cpp (dirkGetBezelCount = 0 sans place),
+  video/VideoSource.h/.cpp ; tests tools/bezel_fit_test.cpp et
+  tools/e2e/bezel (plein ecran sur ecrans virtuels 1920x1080 et 1024x768).
+Verifie : les 2 nouveaux tests passent (18 + 16 controles) ; le meme test
+de bout en bout sur le Dirk d'avant echoue la ou il faut (bezel qui
+retrecit l'image sur l'ecran 4:3, video 16:9 ecrasee, 720x480 en 3:2) ;
+les 25 tests de Dirk passent ; programmes Linux x86_64 et ARM64
+reconstruits (glibc 2.29).
+
+NOUVEAU (v32) -- images des jeux dans EmulationStation (Batocera, ArkOS)
+----------------------------------------------------------------------
+- linux/dirk_gamelist.py : ajoute les medias du dossier Media de chaque
+  jeu au gamelist.xml d'EmulationStation (clear.png = logo, 3D.png =
+  boite, snap.mp4 = video, laserdisc.png = disque, background.png =
+  image principale et fond, marquee.png = logo a defaut de clear.png). Ne touche
+  qu'aux balises d'images qui manquent ou qui pointent deja dans Media ;
+  noms, favoris, compteurs et images choisies par le joueur gardes.
+  Python 3.3+.
+- batocera/"Dirk - Update games list.sh" (nouveau, va dans roms/ports) :
+  remplit roms/dirk/gamelist.xml puis demande a EmulationStation de
+  recharger les listes (API locale /reloadgames).
+- arkos/"Dirk - Update games list.sh" : fait de meme pour les entrees
+  "Dirk - <jeu>" dans le gamelist.xml des Ports (celui qu'EmulationStation
+  lit : ports/ ou, a defaut, ~/.emulationstation/gamelists/ports/).
+Verifie : Batocera et ArkOS simules (gamelist neuf, gamelist existant
+avec d'autres jeux et des choix du joueur, relance sans changement,
+media retire, noms en majuscules/minuscules, jeu a deux versions).
+Balises et emplacement du gamelist verifies dans le code source des
+EmulationStation de Batocera et d'ArkOS. Pas teste : l'affichage par
+un vrai theme.
+
+NOUVEAU (v31) -- lanceur ArkOS + DIRK_HOME
+----------------------------------------------------------------------
+- arkos/dirk-arkos.sh et "arkos/Dirk - Update games list.sh" : Dirk dans
+  la rubrique Ports d'ArkOS (une entree par jeu, ecrite par le second
+  script ; boutons de la console repris de PortMaster).
+- Variable DIRK_HOME : le dossier qui contient KimmyScript, donnee par
+  les lanceurs Linux. Necessaire quand dirk est lance par le chargeur
+  du systeme (carte exFAT d'ArkOS) : son propre chemin est alors celui
+  du chargeur. Sous Windows, rien ne change.
+Verifie : carte ArkOS simulee (liste, lancement par l'entree, manette
+reconnue, lancement par le chargeur) ; les 23 tests de Dirk passent.
+
+NOUVEAU (v30) -- versions Linux pour systemes anciens (glibc 2.29+)
+----------------------------------------------------------------------
+tools/build_linux_bundle_zig.sh <x86_64|aarch64> : fabrique les deux
+paquets Batocera avec Zig (pip install ziglang) comme compilateur, pour
+viser une vieille glibc (2.31 demandee, 2.29 suffit en pratique au lieu
+de 2.38) : Batocera pas a jour, ArkOS, ROCKNIX, Knulli... Remplace
+build_linux_bundle.sh et build_linux_bundle_arm64.sh (gardes pour
+memoire). Aucun changement du code de Dirk ; dirk.exe identique.
+Verifie : les 6 tests de bout en bout passent avec le Dirk x86_64 ainsi
+fabrique ; ARM64 sous emulateur (jeu, appuis, conversion Hypseus).
+
+NOUVEAU (v29) -- version Batocera ARM64 (Raspberry Pi 4/5, portables ARM)
+----------------------------------------------------------------------
+tools/build_linux_bundle_arm64.sh : fabrique le paquet ARM64 depuis un
+Linux PC (compilation croisee), meme contenu et meme lanceur que la
+version PC. Aucun changement du code de Dirk.
+
+NOUVEAU (v28) -- DIRK_FORCE_FULLSCREEN (Batocera)
+----------------------------------------------------------------------
+Variable d'environnement DIRK_FORCE_FULLSCREEN=1 : toujours en plein
+ecran, quel que soit le choix enregistre du jeu ; F10 et la ligne
+Fullscreen du menu sont alors sans effet. Le lanceur Batocera
+(batocera/dirk-launch.sh) la met. Sous Windows, rien ne change.
+Verifie : jeu enregistre en fenetre + variable -> plein ecran, F10 ne
+le change pas ; sans la variable -> fenetre puis F10 -> plein ecran.
+Les 23 tests passent.
+
+NOUVEAU (v27) -- plein ecran sans gestionnaire de fenetres + journal d'ecran
+----------------------------------------------------------------------
+- Sous Batocera, personne ne repond a la demande de plein ecran : la
+  fenetre restait a la taille du film (1440x1080), trop grande pour
+  l'ecran 1280x800 du Steam Deck. Si le plein ecran ne prend pas, Dirk
+  couvre maintenant l'ecran lui-meme (fenetre sans bord a la taille de
+  l'ecran) et l'image y est centree comme d'habitude. Message dans le
+  journal ("covering the screen"). F10 revient bien en fenetre.
+  Quand le systeme gere le plein ecran (Windows, bureau Linux), rien ne
+  change.
+- dirk_log / dirk.log : une ligne "[dirk] display:" (taille de l'ecran,
+  de la fenetre, de la zone de dessin) a chaque changement.
+Verifie : ecran simule 1280x800 et 3440x1440 sans gestionnaire de
+fenetres (image 4:3 centree, hauteur pleine, bandes noires sur les
+cotes ; plein ecran -> fenetre -> plein ecran), puis avec un
+gestionnaire de fenetres (vrai plein ecran, pas de secours). Les 23
+tests passent (le test audio Hypseus a un controle qui echoue parfois,
+aussi avant ce changement).
+
+NOUVEAU (v26) -- batocera/es_systems_dirk.cfg : theme "dirk" au lieu de
+"daphne" (le nom du systeme pour le theme ; aucun effet sur le lancement).
+
+NOUVEAU (v25) -- version Linux pour Batocera (source)
+----------------------------------------------------------------------
+- tools/build_linux_bundle.sh : fabrique le paquet Batocera PC x86_64
+  (le zip dirk-batocera-x86_64 livre a part en sort, a l'identique).
+- batocera/dirk-launch.sh et batocera/es_systems_dirk.cfg : le lanceur
+  et la declaration du systeme "Dirk" pour EmulationStation.
+Aucun changement du code de Dirk.
+
+NOUVEAU (v24) -- plus de controls.cfg lu a la racine du jeu
+----------------------------------------------------------------------
+Dirk cherchait le controls.cfg dans Cfg\ du jeu, puis a la racine du
+jeu (ancienne convention), puis le partage de KimmyScript. La racine
+n'est plus lue : en pratique, un controls.cfg a cet endroit est celui
+d'un jeu Singe, ecrit avec les noms de Singe que base.kimmy ne
+connait plus (v11c) -- le jeu se serait retrouve sans aucune touche.
+Maintenant : Cfg\controls.cfg du jeu, sinon le partage. Un fichier
+present a la racine est signale dans le journal ("is ignored").
+Meme chose a l'interieur d'un .zdirk.
+Verifie : Dirk reel, DLe avec un controls.cfg de Singe a la racine :
+note "ignored", controls.cfg partage charge (92 controles), touches et
+manette donnent les actions attendues. Les 23 tests de Dirk passent.
+
+NOUVEAU (v23) -- Downloader : progression visible, blocage detecte
+----------------------------------------------------------------------
+- Pendant un telechargement, UNE ligne du journal se met a jour en
+  direct : "... 420.3 MB received, 2.1 MB/s, 3:20". Mesure faite sur le
+  disque (le dossier cache .dirk-download-tmp), fichier par fichier --
+  l'Explorateur, lui, peut afficher une taille figee pour un fichier en
+  cours d'ecriture.
+- Rien de nouveau depuis 30 s : la ligne ajoute "nothing new for 0:45".
+- Rien depuis 5 minutes : megatools est arrete, le dossier temporaire
+  efface, message clair ; le jeu reste installe et le statut (Movie
+  missing...) fait que le prochain essai ne reprend que ce qui manque.
+- A savoir : megatools telecharge par le lien public, SANS compte ; les
+  limites de Mega pour les telechargements anonymes s'appliquent donc,
+  quel que soit ton abonnement (c'est aussi ce que verront les joueurs).
+Verifie : downloader\selftest\run.sh, 51 verifications (6 nouvelles :
+film arrivant lentement = lignes MB croissantes avec la vitesse ;
+telechargement bloque = arrete, message, dossier temporaire efface, jeu
+garde, statut Movie missing). Vraie fenetre sous Wine : une seule ligne
+qui se met a jour (2.0 MB a 0:04, puis 3.0 MB a 0:06 a la meme place).
+
+NOUVEAU (v22) -- Downloader : raccourcis des jeux a plusieurs versions
+----------------------------------------------------------------------
+Hayate.zdirk contient Hayate.dirk ET HayatePSX.dirk : le Downloader
+ecrit lui-meme HayatePSX.dirk (le petit raccourci) a cote de
+Hayate.zdirk. Rien a ajouter sur Mega ni dans le manifest : il lit la
+liste des fichiers du .zdirk (sans rien extraire) apres chaque
+telechargement.
+- Meme regle que Dirk : les .dirk en haut du zip (ou de son dossier
+  unique) ; celui qui porte le nom du zip n'en a pas besoin ; un zip a
+  un seul .dirk n'en a aucun.
+- Mise a jour : un raccourci dont le script a disparu du zip est
+  supprime ; un nouveau est ajoute.
+- Un .dirk du meme nom qui n'est PAS un raccourci (un vrai script mis
+  par le joueur) n'est jamais ecrase ni supprime (le journal le dit).
+- Nouveau statut "Shortcut missing" (jeu installe avec l'ancien
+  Downloader, ou raccourci efface) : coche le jeu et "Download" : le
+  raccourci est ecrit, rien n'est telecharge.
+Verifie : downloader\selftest\run.sh, 45 verifications (15 nouvelles),
+raccourcis ouverts ensuite avec le vrai code de Dirk (le bon script du
+zip est lance), et la vraie fenetre sous Wine affiche "Shortcut missing".
+
+NOUVEAU (v21) -- Dirk Downloader : .zdirk, film et medias a part
+----------------------------------------------------------------------
+Dans manifest.txt, un jeu peut maintenant avoir 2 ou 3 liens separes
+par | :
+    Timegal = lien du .zdirk | lien du dossier Movie | lien des medias
+    Hayate  = lien du .zdirk | lien du dossier Movie
+- lien du .zdirk : "Obtenir le lien" sur le FICHIER .zdirk.
+- lien du Movie : sur le dossier Movie (ou un seul fichier film). Un
+  dossier nomme Video (jeu Hypseus) reste Video.
+- lien des medias (facultatif) : boite 3D, marquee, video... Telecharge
+  seulement si le joueur coche "Also download frontend media" (retenu
+  d'une fois sur l'autre). Les fichiers arrivent tels quels dans Media\,
+  aucune configuration de lanceur.
+L'ancienne forme Nom=lien (tout le dossier du jeu) marche comme avant.
+
+Nouvelle colonne Status : Not installed / Up to date / Update available
+/ Movie update available / Movie missing / Media update available.
+Comment Dirk Downloader sait qu'il y a une mise a jour : il note, dans
+un petit fichier cache .dirk-download a cote du jeu, les liens utilises.
+Quand tu remplaces un fichier sur Mega, son lien change et tu mets le
+nouveau dans le manifest : lien different = mise a jour. Pas de numero
+de version a gerer.
+En cochant un jeu deja installe, seul ce qui a change est retelecharge
+(une mise a jour du jeu = juste le .zdirk, jamais le film). Cfg(reglages, sauvegardes, records) n'est JAMAIS touche ; les fichiers que
+le joueur a ajoutes a cote du film (sous-titres, langues) sont gardes.
+Un film deja present sans historique (copie a la main) est garde.
+Un .zdirk telecharge incomplet est refuse avec un message clair (le
+precedent reste en place). Un .zdirk renomme sur Mega remplace l'ancien.
+
+Verifie : downloader\selftest\run.sh -- le vrai code du Downloader, un
+faux megatools et un faux Mega, sous Wine : 30 verifications (premiere
+installation, mise a jour du jeu seul, medias demandes plus tard, film
+et medias mis a jour, film supprime, telechargement coupe refuse -- et
+le test echoue bien si on retire cette verification -, erreur megatools,
+mauvais lien, .zdirk renomme, film copie a la main, dossier Video,
+ancienne forme a un lien). Puis la vraie fenetre sous Wine : colonne
+Status remplie, case medias retenue, deux jeux coches et telecharges,
+statuts passes a Up to date.
+Pas teste contre le vrai Mega (bloque ici) : le premier essai reel est
+le tien -- regarde le journal en bas de la fenetre.
+
+NOUVEAU (v20) -- Plusieurs jeux dans un .zdirk (raccourcis)
+----------------------------------------------------------------------
+L'equivalent de -usealt de Hypseus. Exemple : Hayate.zdirk contient
+Hayate.dirk ET HayatePSX.dirk (+ Overlay, Sounds... en commun).
+- Double-clic sur Hayate.zdirk : lance Hayate.dirk (le script qui porte
+  le nom du zip), comme avant.
+- Pour l'autre jeu, un petit fichier HayatePSX.dirk A COTE du zip, avec
+  juste :
+      zdirk = "Hayate.zdirk"
+      script = "HayatePSX.dirk"
+  (la ligne script est facultative : par defaut, le nom du fichier
+  lui-meme). Double-clic dessus = HayatePSX, lu dans le zip.
+  Exemple fourni : exemple-raccourci\HayatePSX.dirk.
+Dirk reconnait un raccourci a sa ligne zdirk = "..." (et a sa petite
+taille : moins de 4 Ko) ; un vrai script de jeu n'est jamais pris pour
+un raccourci. Le raccourci n'est jamais confondu avec le script du zip
+qui porte le meme nom. Si le script demande n'est pas dans le zip, le
+message donne la liste de ceux qui y sont.
+Attention : lancer le DOSSIER (et non un fichier) prend le seul .dirk
+qu'il contient, donc le raccourci.
+
+Verifie : game_archive_test (lecture des raccourcis : commentaires,
+guillemets simples ou doubles, fins de ligne Windows ; un vrai script
+ou un gros fichier jamais pris pour un raccourci ; bon script choisi ;
+message si absent -- aussi compile pour Windows et execute sous Wine),
+zdirk_e2e_test (vrai Dirk : raccourci Zalt.dirk a cote du zip -> son
+2e jeu tourne, images lues dans le zip ; le .zdirk seul lance toujours
+le 1er), vrai Dragon's Lair en zip a 2 jeux lance par un raccourci :
+la bonne variante tourne, partie lancee, aucune erreur. 23 series OK,
+aussi sous AddressSanitizer.
+
+NOUVEAU (v18, revu en v19) -- Jeux zippes (.zdirk), lus sur place
+----------------------------------------------------------------------
+Un jeu peut tenir en un seul fichier, comme les .zlua de Hypseus : on
+zippe le dossier du jeu et on renomme le zip en .zdirk. Double-clic
+dessus = le jeu se lance, comme un .dirk.
+
+v19 : le zip est lu SUR PLACE, comme Hypseus. Plus aucune copie du jeu
+dans un dossier cache (le %LOCALAPPDATA%\Dirk\zdirk de la v18 ne sert
+plus : tu peux l'effacer). Scripts, images, polices, sons, bezels et
+controls.cfg sont lus directement dans le zip, en memoire.
+
+Faire un .zdirk (ex. Timegal) :
+  1. Dans le dossier du jeu, selectionne tout SAUF Movie (Timegal.dirk,
+     Overlay, Fonts, Sounds, Script, Cfg...) > clic droit > Envoyer vers
+     > Dossier compresse. (Zipper le dossier Timegal entier, sans Movie,
+     marche aussi.)
+  2. Renomme le zip en Timegal.zdirk (extensions visibles dans
+     l'Explorateur : Affichage > Extensions de noms de fichiers).
+  3. Range-le dans un dossier avec seulement le Movie a cote :
+        Timegal\Timegal.zdirk
+        Timegal\Movie\...
+     Les fichiers d'origine NE doivent PAS rester a cote : un fichier
+     pose a cote du .zdirk passe avant celui du zip.
+  4. Relance l'installeur une fois (il associe .zdirk a dirk.exe), ou
+     "Ouvrir avec" > dirk.exe > Toujours.
+
+Ce qui se passe :
+- Pour le jeu, son dossier = le dossier du .zdirk, avec le contenu du
+  zip "pose dessus" : un fichier present a cote gagne (Custom\, Cfg\...),
+  le jeu ecrit a cote comme d'habitude, et les listes de fichiers
+  melangent les deux.
+- Comme le dossier "ram" de Hypseus : les fichiers Cfg du zip (reglages,
+  sauvegardes, records : ce que le jeu modifie) sont copies dans Cfg\ a
+  cote du .zdirk au premier lancement, sans jamais ecraser ceux du
+  joueur. C'est la seule chose ecrite sur le disque.
+- Le film doit etre a cote (deja compresse, et les sauts doivent rester
+  instantanes) : un film dans le zip est refuse avec un message clair.
+- Ouverture du zip : 1 ms (Dragon's Lair, 111 fichiers).
+- Securite : un zip piege (chemins en .., lecteur, chemin absolu) est
+  ignore.
+- Un zip Hypseus (-zlua) renomme n'est pas encore pris en charge
+  (organisation differente).
+
+Verifie :
+- game_archive_test : zip avec ou sans dossier au-dessus, choix du
+  script, reglages d'usine, le fichier a cote gagne, rien d'autre ecrit
+  sur le disque, listes fusionnees, zips pieges ou abimes. Compile pour
+  Windows et execute (Wine) : OK, y compris majuscules/minuscules et
+  separateurs \ / melanges.
+- zdirk_e2e_test (vrai Dirk) : lancement par le .zdirk, par le dossier,
+  apres remplacement du .zdirk ; scripts (dofile, loadfile, .singe ->
+  .kimmy, erreur de syntaxe bien signalee), images, police et son lus
+  dans le zip -- le son du zip est bien ENTENDU dans la sortie audio
+  reelle de Dirk ; Custom\ a cote lu ; sauvegarde ecrite a cote et relue ;
+  aucune copie du jeu sur le disque, aucun fichier temporaire laisse.
+- Vrai KimmyScript : Dragon's Lair en .zdirk (Movie a cote) : attract,
+  partie lancee (vies, score), Dirk Options (polices et images du zip),
+  Scanlines passe a On et sauve dans Cfg\game.cfg a cote. Dossier du jeu
+  apres coup : DLe.zdirk, Movie, Cfg -- rien d'autre. Aucune erreur,
+  aussi sous AddressSanitizer.
+- 23 series de tests OK. Les jeux non zippes tournent exactement comme
+  avant.
+- Licences : miniz (MIT) dans THIRD_PARTY_NOTICES.txt et Licenses\.
+
+NOUVEAU (v17) -- Vrais noms de langues dans Dirk Options
+----------------------------------------------------------------------
+Audio et Subtitles affichent maintenant le nom de la langue, en anglais
+comme le reste du menu : "French", "Italian", "Japanese"... au lieu de
+"FR", "IT", "JA".
+- Codes ISO 639-1 (2 lettres, les 184 langues) : lair-fr.ogg,
+  Titan_AE-de.srt... Les codes a 3 lettres (ISO 639-2, "fre"/"fra") que
+  l'on trouve dans les mp4/mkv sont reconnus aussi.
+- Avec une region : -pt-br -> "Portuguese (BR)".
+- Sans suffixe : inchange ("Original" pour l'audio, "On" pour les
+  sous-titres).
+- Suffixe inconnu (-xx) : "Unknown". Exception : "jp" est accepte pour
+  le japonais (erreur tres courante, et deja accepte avant).
+- Deux pistes de meme langue : "French", "French (2)".
+- Noms en lettres sans accent ("Norwegian Bokmal", "Volapuk") : toute
+  police de jeu peut les afficher.
+Tes choix deja sauves restent valables : un game.cfg qui contient
+dirk_AudioTrackName = FR (ecrit par la v15/v16) retrouve bien "French".
+Rien a refaire sur les jeux ni sur les .mkv deja convertis.
+
+Verifie :
+- languages_test (nouveau) : les 184 codes, noms courts et sans accent,
+  codes a 3 lettres, regions, inconnus, doublons, noms des pistes mp4/mkv.
+  Compile aussi sous Windows (MinGW) et execute : OK.
+- subtitles_test : On, English, French, French (2), Italian,
+  Portuguese (BR), Unknown.
+- audio_tracks_e2e_test (vrai Dirk, son enregistre) : Original, French,
+  Italian ; ajout de -de et -xx -> German et Unknown ; un game.cfg ancien
+  (IT) joue bien l'italien des le depart (ce test echoue si on retire la
+  compatibilite : verifie).
+- Vrai Dirk + vrai KimmyScript (Dragon's Lair) : Dirk Options affiche
+  "French"/"English", "Norwegian Nynorsk", "Portuguese (BR)" ; tout tient
+  dans la colonne (voir apercu-noms-langues.png).
+- 21 series de tests OK, aussi sous AddressSanitizer.
+
+NOUVEAU (v16) -- Sous-titres nommes comme les langues audio
+----------------------------------------------------------------------
+Meme convention partout : Titan_AE-fr.srt, comme lair-fr.ogg (tu peux donc
+renommer Titan_AE.fr.srt en Titan_AE-fr.srt ; l'ancienne forme ".fr" et
+"_fr" marchent toujours). Pour un jeu Hypseus, Dirk cherche aussi les .srt
+a cote du .m2v (Video\<nom>-fr.srt), avec ses .ogg.
+Verifie : subtitles_test (-en, .FR, _it trouves), audio_tracks_e2e_test
+(Video\test-fr.srt trouve pour un jeu Hypseus). 20 series OK, aussi sous
+AddressSanitizer.
+
+NOUVEAU (v15) -- Plusieurs langues audio
+----------------------------------------------------------------------
+Nouvelle ligne "Audio" dans Dirk Options (au-dessus de "Subtitles") :
+gauche/droite passe d'une langue a l'autre, EN DIRECT (Dirk se recale sur
+l'image a l'ecran, comme apres un saut : la synchro ne bouge pas). "N/A"
+s'il n'y a qu'une piste. Seule la piste choisie est decodee.
+
+Jeux Hypseus : a cote de Video\<nom>.m2v et <nom>.ogg, les autres langues
+en <nom>-fr.ogg, <nom>-it.ogg (le suffixe de -altaudio ; _fr et .fr
+marchent aussi). Au premier lancement Dirk les ajoute comme pistes au
+Movie\<nom>.mkv qu'il fabrique deja (piste d'origine = "Original", puis
+"FR", "IT"...). Si le jeu a deja un .mkv d'une version
+precedente et des <nom>-xx.ogg, ce .mkv est refait tout seul au prochain
+lancement, une fois (idem si tu ajoutes ou retires une langue plus tard ;
+Movie\<nom>.mkv.audio garde la liste). Un jeu sans autre langue n'est pas
+touche.
+
+Autres jeux : un .mp4/.mkv qui contient deja plusieurs pistes audio est
+reconnu tel quel ("EN", "FR" d'apres la langue indiquee dans le fichier).
+
+Choix sauve par jeu (game.cfg : dirk_AudioTrack et dirk_AudioTrackName) ;
+c'est le NOM qui compte, donc ajouter une langue plus tard ne fait pas
+changer le choix d'un joueur. dirk_log.txt :
+    [dirk] audio tracks: Original, FR, IT -- playing FR
+
+Verifie :
+- audio_tracks_test : les fichiers -fr/_it sont trouves (et pas les autres
+  .ogg), le .mkv a bien 3 pistes titrees FR/IT, bien entrelacees ; chaque
+  piste s'entend seule (3 sons tests differents, 440/880/1320 Hz) apres
+  changement, et la piste sauvee est ouverte directement.
+- audio_tracks_e2e_test : vrai Dirk, son reellement enregistre en sortie :
+  original, puis FR, puis IT aux moments des changements, jamais deux
+  langues en meme temps hors de l'instant du changement ; relance = IT
+  des le depart ; ajout d'un -de.ogg = .mkv refait, choix IT conserve.
+- Vrai KimmyScript (Dragon's Lair avec une 2e piste FR ajoutee) :
+  Audio EN -> FR dans Dirk Options, le son change aussitot, EXIT sauve,
+  relance en FR.
+- 20 series de tests OK, aussi sous AddressSanitizer ; compilation Windows
+  (MinGW) des fichiers modifies.
+- Au passage : petite fuite memoire corrigee dans la conversion des jeux
+  Hypseus (quelques centaines de Ko, une seule fois a la conversion).
+
+Ce que je n'ai PAS fait : Hypseus a aussi des fonctions Lua pour changer
+de langue depuis le script d'un jeu ; je n'ai pas leur nom. Si un de tes
+jeux les appelle, dirk_error.log le dira et je les ajouterai.
+
+Deja dans la v14 -- Taille des sous-titres
+----------------------------------------------------------------------
+Nouvelle ligne "Subtitle Size" dans Dirk Options, sous "Subtitles" :
+gauche/droite de 10 % en 10 %, de 50 % a 150 % (100 % = taille d'avant).
+Meme police, seule la taille change ; les sous-titres restent centres en
+bas de l'image. Sauve par jeu (game.cfg, ligne dirk_SubtitleSize a la
+fin). Pour changer la valeur par defaut de TOUS les jeux qui n'ont pas
+encore de reglage : subtitle_size=80 (par exemple) dans
+KimmyScript\Cfg\dirk_settings.cfg.
+dirk_log.txt l'indique : "subtitles: FR (521 lines) -- showing FR, size 80%".
+
+Verifie : subtitles_e2e_test (vrai Dirk, captures) : a 50 % le texte est
+2 fois moins large (mesure : 0,50), a 150 % 1,5 fois plus (1,52), 300
+demande -> 150 ; toujours centre en bas. Menu reel (Dragon's Lair) :
+100 % -> 80 % en deux appuis, EXIT sauve dirk_SubtitleSize = 80, relance
+= "size 80%". 18 series de tests OK, aussi sous AddressSanitizer ;
+compilation Windows (MinGW) des fichiers modifies.
+
+Deja dans la v13 -- Sous-titres
+----------------------------------------------------------------------
+Un fichier .srt pose a cote du film d'un jeu, avec le meme nom, est
+affiche en bas de l'image. Aucun changement dans les jeux.
+
+    Timegal\Movie\Timegal.mp4
+    Timegal\Movie\Timegal.srt      -> piste "On"
+    Timegal\Movie\Timegal-fr.srt   -> piste "FR"
+    Timegal\Movie\Timegal-en.srt   -> piste "EN"
+
+- Les heures du .srt sont celles du FILM COMPLET (0 = premiere image du
+  fichier) : c'est ce qu'affiche un editeur de sous-titres quand on lui
+  ouvre le film (Subtitle Edit, gratuit, par exemple). Dirk affiche la
+  replique de l'image a l'ecran : les sauts du jeu (morts, choix, boucle
+  d'attract) n'y changent rien.
+- Accents : UTF-8, UTF-16 ou vieux fichiers Windows (ANSI), tous lus
+  correctement. Les balises <i>, <b>, <font> et {\an8} sont retirees.
+  Un bloc illisible est ignore, jamais bloquant.
+- Aspect : toujours la meme police (celle de Dirk, DejaVu Sans Bold,
+  KimmyScript\Cfg\dirk_loading_font.ttf), blanc avec contour noir,
+  taille proportionnelle a la hauteur de l'image. Les retours a la ligne
+  sont ceux du fichier ; une ligne trop large est reduite (meme police).
+- Les sous-titres sont dessines SUR l'image mais SOUS les graphismes du
+  jeu : menus, score et textes du jeu restent toujours par-dessus.
+- Reglage par jeu dans "Dirk Options" (KimmyScript v8) : ligne
+  "Subtitles" = Off / On / FR / EN... selon les fichiers presents ; N/A
+  si le jeu n'en a pas. Actifs par defaut quand un jeu en a. Sauve dans
+  le game.cfg du jeu (ligne dirk_SubtitleIndex, ajoutee a la fin).
+- dirk_log.txt indique ce qui a ete trouve, par exemple :
+    [dirk] subtitles: On (212 lines), FR (212 lines) -- showing FR
+
+Verifie :
+- subtitles_test : lecture des .srt (encodages, fins de ligne, balises,
+  blocs casses, ordre), recherche de la replique a une image donnee,
+  recherche des fichiers a cote du film.
+- subtitles_e2e_test : vrai Dirk, captures d'ecran apres des sauts dans
+  le film : replique affichee au bon moment, rien entre deux repliques,
+  deux lignes, ligne trop large reduite, Off, changement de langue.
+- Vrai KimmyScript (Dragon's Lair) : "Subtitles" dans Dirk Options passe
+  On -> FR -> Off -> On -> FR, EXIT sauve dirk_SubtitleIndex = 2, et au
+  relancement Dirk affiche bien la piste FR.
+- 18 series de tests OK, aussi sous AddressSanitizer ; compilation
+  Windows (MinGW) des fichiers modifies.
+- Performance : une replique est dessinee une seule fois, puis simple
+  copie de texture a chaque image.
+
+Licences : la police de Dirk (DejaVu Sans Bold) etait deja livree mais
+manquait dans THIRD_PARTY_NOTICES.txt. Ajoutee, avec son texte de
+licence (installer/payload/Licenses/DejaVu-Fonts.txt).
+
+Deja dans la v12 -- Dirk indique quel KimmyScript il utilise
+----------------------------------------------------------------------
+Au lancement d'un jeu, Dirk ecrit le dossier KimmyScript qu'il lit
+vraiment, et l'empreinte de chaque fichier du dossier Script :
+
+  KimmyScript used: E:\Dirk Games\KimmyScript
+    52351419 addons.kimmy
+    b8b7b6e1 framework.kimmy
+    be8a9ab2 globals.kimmy
+    ...
+
+C'est exactement la forme de "md5sum *.kimmy | cut -c1-8,33-" et de la
+liste du LISEZMOI de chaque livraison KimmyScript : on compare ligne a
+ligne.
+
+Ou le trouver :
+- dans dirk_error.log, tout en haut : a chaque erreur de script, on sait
+  donc quelle version tournait (rien a activer) ;
+- dans dirk_log.txt quand "Generate Log" est active.
+
+Rappel : Dirk prend le KimmyScript a cote de dirk.exe s'il y en a un,
+sinon il remonte depuis le dossier du jeu.
+
+Verifie : nouveau test kimmy_fingerprint_test (empreintes comparees aux
+valeurs officielles du MD5, fichier de 1 Mo, dossier Script absent).
+Vrai Dirk : les lignes du log et de dirk_error.log sont identiques a
+md5sum ; avec deux copies (une a cote de dirk.exe, une ancienne a cote
+des jeux), c'est bien celle a cote de dirk.exe qui est lue et affichee.
+16 series de tests, toutes OK (la nouvelle aussi sous AddressSanitizer).
+Cout : lecture d'environ 0,5 Mo au lancement, quelques millisecondes.
+
+Deja dans la v11 -- Les textes ne sortent plus de l'ecran
+----------------------------------------------------------------------
+Filet de securite pour tous les jeux : si une ligne ecrite avec
+fontPrint est plus large que l'ecran (elle serait coupee de toute
+facon), Dirk la reduit juste assez pour qu'elle tienne, avec une petite
+marge, en gardant son centre. Meme police, jamais de changement de
+police. Une ligne qui tient deja n'est jamais touchee, meme d'un pixel
+(y compris un texte qui entre par le bord de l'ecran).
+Le passage sur deux lignes reste au script, qui seul sait ce qu'il y a
+en dessous (voir le zip KimmyScript fourni avec, pour l'ecran de fin de
+niveau).
+
+Verifie (text_resource_cache_test) : une ligne 5 fois plus large que
+l'ecran, placee comme dans Space Ace, tient dans l'ecran et reste
+centree ; une ligne qui tient est identique au pixel pres a avant ; en
+desactivant volontairement le filet, le test echoue bien.
+
+Deja dans la v10 -- Bandeau d'erreur de script : une seule phrase
+----------------------------------------------------------------------
+Le bandeau rouge affiche maintenant uniquement :
+    Script error detected - see dirk_error.log
+Plus de fichier, de numero de ligne ni de message technique a l'ecran :
+tout ca reste dans dirk_error.log (avec la pile d'appels), comme avant.
+Il apparait toujours 8 secondes a la premiere occurrence de chaque
+erreur differente, et se desactive toujours avec error_banner=0.
+Verifie : captures d'ecran avec la police TrueType et avec la police de
+secours, et le bandeau revient bien pour une 2e erreur apres avoir
+disparu.
+
+Deja dans la v9 -- Logo Kimmy a la bonne taille quelle que soit la video
+----------------------------------------------------------------------
+Le logo etait toujours dessine a sa taille d'origine (226 pixels de
+haut) sur une video affichee en pleine resolution : 21 % de la hauteur
+de l'image en 1080, mais 31 % en 720 et 47 % en 480. Il prend
+maintenant la meme part de l'ecran qu'en 1080 (la taille que tu as
+validee), quelle que soit la resolution de la video. Les modes Lo /
+UltraLo continuent de le reduire comme avant, et en 1080 rien ne
+change.
+
+Mesure (nouveau test kimmy_logo_test, sur le vrai dirkKimmyLogo) :
+  video 1080p : 226 px = 20,9 %   (inchange)
+  video 720p  : 151 px = 21,0 %   (avant : 226 px = 31 %)
+  video 480p  : 100 px = 20,8 %   (avant : 226 px = 47 %)
+  mode Lo     : meme proportion   (le logo garde aussi sa place, a une
+                                   ligne du haut et du bord droit)
+
+Deja dans la v8 -- Manettes au premier lancement d'un jeu
+----------------------------------------------------------------------
+Le bug : au tout premier lancement d'un jeu (celui qui affiche l'ecran
+INDEXING), aucune manette ni joystick ne fonctionnait, et l'assistant
+F9 ne les voyait pas. En relancant, tout marchait.
+
+La cause : au demarrage, Windows (via SDL) annonce chaque manette deja
+branchee par un message "manette ajoutee", et Dirk n'ouvre une manette
+qu'en recevant ce message. Pendant l'ecran INDEXING, Dirk vide la file
+des messages pour que Windows ne croie pas le programme bloque... et
+jetait ces messages avec le reste. Au lancement suivant, l'index existe
+deja, il n'y a pas d'ecran INDEXING, donc les messages arrivaient.
+
+La correction : pendant l'indexation, les messages "manette ajoutee /
+retiree" sont mis de cote, puis rendus au jeu une fois l'index fini.
+Rien d'autre ne change.
+
+Verifie : reproduit sans borne avec un joystick et une manette
+virtuels. Avant : premier lancement, aucune manette ouverte, aucun
+appui recu ; lancement suivant, tout marche. Apres : les deux
+lancements ouvrent les deux manettes et recoivent leurs appuis.
+Test first_launch_e2e_test. Au total 15 series de tests, toutes OK,
+aussi sous AddressSanitizer.
+
+Valide sur ta borne.
+
+Deja livre (inchange depuis la v7)
+----------------------------------------------------------------------
+fontPrint plus leger, decode_threads=auto par defaut, son aligne apres
+les sauts, points 1 a 8 de la review, crash a la fermeture.
+
+Fichiers a remplacer (recompilation necessaire)
+----------------------------------------------------------------------
+  CMakeLists.txt, README.md
+  src/core/  EngineContext.h, JoystickWizard.cpp/.h,
+             KimmyFingerprint.cpp/.h, LaunchSettings.cpp/.h,
+             ScriptErrorLog.cpp/.h, Subtitles.cpp/.h (nouveaux),
+             SubtitleRenderer.cpp/.h (nouveaux), main.cpp
+  src/lua/   LuaEngine.cpp/.h, api_singe.cpp/.h
+  src/video/ HypseusRemux.cpp/.h, VideoSource.cpp/.h, VideoTexture.cpp/.h
+  tools/     *_test.cpp et le dossier tools/e2e/
+  assets/    petits films de test (ctest uniquement)
+  installer/payload/THIRD_PARTY_NOTICES.txt
+  installer/payload/Licenses/DejaVu-Fonts.txt (nouveau)
+
+N'oublie pas de copier le nouveau dirk.exe dans le dossier Dirk ;)
+Avec ce zip : KimmyScript v8 (service.kimmy, menu Dirk Options).

@@ -1,0 +1,59 @@
+// Windows resource metadata for dirk.exe -- FileDescription/ProductName/
+// FileVersion etc, embedded into the .exe's PE resources at link time.
+//
+// A GCC/MinGW-built executable has NONE of this by default (no version
+// info, no description, no publisher), unlike a typical Visual Studio
+// build which always carries at least a minimal block -- and Windows'
+// shell (the "Open with" / default-app picker specifically) is known to
+// be unreliable about persisting an "always use this app" choice for an
+// exe with zero PE metadata, sometimes silently reverting to something
+// else (a Store-search placeholder) instead of committing the choice.
+// This won't hurt anything if that turns out not to be the cause here,
+// but it's a real, permanent improvement either way -- dirk.exe gets a
+// proper description/version/publisher visible in Explorer's Properties
+// dialog and in Task Manager, instead of showing up as a bare, unlabeled
+// binary.
+#include <windows.h>
+
+// App icon: shown on dirk.exe itself in Explorer/Task Manager/Alt-Tab, and
+// picked up automatically by the installer's .dirk file association
+// (installer/dirk_installer.nsi sets DefaultIcon to "dirk.exe,0" -- icon
+// resource ID 0/first, i.e. this one -- so every launcher .dirk file in a
+// game folder gets this icon too, once dirk.exe itself carries it).
+// Generated from the Dirk Engine logo (assets/dirk_loading/dirk_loading.png,
+// the same image used on the first-run indexing screen) via:
+//   python3 -c "from PIL import Image; s=Image.open('assets/dirk_loading/dirk_loading.png').convert('RGBA'); w,h=s.size; side=max(w,h); sq=Image.new('RGBA',(side,side),(0,0,0,0)); sq.paste(s,((side-w)//2,(side-h)//2),s); sq.save('src/core/dirk.ico', sizes=[(n,n) for n in (16,24,32,48,64,128,256)])"
+// IDI_ICON1's numeric ID matters here: windres/the linker expose an .exe's
+// icons to other programs (Explorer, this installer) ordered by resource
+// ID, and "dirk.exe,0" in the installer means "the lowest-ID icon" -- this
+// needs to stay the only (or at least the first) ICON block in this file
+// for that reference to keep pointing at the right one.
+IDI_ICON1 ICON "dirk.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          0x40004L // VOS_NT_WINDOWS32
+FILETYPE        0x1L     // VFT_APP
+FILESUBTYPE     0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0" // US English, Unicode
+        BEGIN
+            VALUE "CompanyName",     "Dirk Project"
+            VALUE "FileDescription", "Dirk -- KimmyScript engine"
+            VALUE "FileVersion",     "1.0.0.0"
+            VALUE "InternalName",    "dirk"
+            VALUE "OriginalFilename","dirk.exe"
+            VALUE "ProductName",     "Dirk"
+            VALUE "ProductVersion",  "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

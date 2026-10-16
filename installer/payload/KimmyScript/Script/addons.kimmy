@@ -1,0 +1,42 @@
+--[[
+
+PROGRAM NAME:	KIMMY SCRIPT
+VERSION:		4.1
+AUTHOR:			KARIS (2021)
+
+This file is part of KIMMY SCRIPT.
+
+	KIMMY SCRIPT is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation.
+
+	KIMMY SCRIPT is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+	Thanks to Scott Duensing, RDG, DirtBagXon.
+
+]]--
+
+
+function swapScene()  -- allows to swap some scenes for some difficulties (SuckerPunch, Tron)
+
+
+end
+
+
+function moveCursor(overHere)  	-- Used for Map (SuckerPunch)
+
+	
+end
+
+function LevelMapComplete()		-- Used for Map (SuckerPunch)
+
+	
+end
+
+function doLevelSelect() 	-- Used for Map (SuckerPunch)
+
+		
+
+end

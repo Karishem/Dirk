@@ -24,6 +24,19 @@ extern "C" {
 #include <libavutil/frame.h>
 }
 
+// This tool never touches SDL itself -- it only needs VideoSource/ffmpeg --
+// but dirk_core links SDL2 PUBLIC (LaunchSettings/Bezel/InputMap all use
+// it), so anything linking dirk_core inherits that dependency, SDL2main.a
+// included on Windows. SDL2main.a expects to call a symbol named SDL_main,
+// which only exists if some translation unit in the final link included
+// <SDL.h> (its SDL_main.h header #define's main to SDL_main on Windows/iOS
+// specifically) -- without it, the linker sees this file's own `main`
+// under its real name and SDL2main.a's reference to SDL_main goes
+// unresolved: "undefined reference to `SDL_main'". Including it here is a
+// no-op on Linux (the rename is guarded to Windows/iOS inside SDL itself)
+// and doesn't require actually calling any SDL API.
+#include <SDL3/SDL.h>
+
 #include <cstdio>
 #include <cstdint>
 #include <vector>

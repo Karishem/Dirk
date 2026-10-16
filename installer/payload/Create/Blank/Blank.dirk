@@ -1,0 +1,59 @@
+--[[ Your Game - your name ]]--
+
+Sheet [[
+
+GAME
+  MovieFPS           23.976
+  RelativeFrames     yes
+  altCfg             no
+
+CLIPS
+  Title              0 - 1
+  Intro01            0 - 1
+  Intro02            0 - 1
+  Intro03            0 - 1
+  IntroGame          0 - 0
+  GameOver           0 - 1
+  GameOverAlt        0 - 1
+  NewHScore          0 - 1
+  EnterHScore        0 - 1
+  Rankings           0 - 1
+  Continue           0 - 1
+  Clear              0 - 1
+  GetReady           0 - 1
+  SupDeath           0 - 1
+  Quit               0 - 1
+  MovieEnd           1
+
+MENU FRAMES
+  Menus              1
+  Options            Menus + 0
+  Victory            Menus + 3
+  Save               Menus + 6
+  Rankings           Menus + 9
+  Controls           Menus + 12
+  Special            Menus + 15
+  Hints              Menus + 24
+  Secret             0
+  Trophy             0
+
+DEATHS
+     1    0 - 1      # death 1
+     2    0 - 1      # death 2
+
+LEVEL 1   Title 1
+  intro 30 - 31
+
+  SCENE 32 - 100
+        35 - 50       RIGHT    1
+
+  SCENE 101 - 200
+        105 - 120     LEFT     2
+        
+LEVEL 2   Title 2
+  intro 205 - 206
+
+  SCENE 207 - 300
+        210 - 225     UP       1
+        
+]]

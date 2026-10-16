@@ -1,0 +1,61 @@
+-- .zdirk e2e (2026-09-28): this whole folder is zipped into Zgame.zdirk by
+-- run.sh; the movie, a Custom/ override and the saves live next to it.
+-- Nothing of the zip is extracted: the game sees its folder with the zip
+-- laid over it.
+-- Every check prints "ZCHECK <name>=<value>" for analyze.py.
+OVERLAY_UPDATED = 1
+local done = false
+local function say(k, v) print("ZCHECK " .. k .. "=" .. tostring(v)) end
+local function readAll(p)
+  local f = io.open(p, "r")
+  if not f then return "<none>" end
+  local s = f:read("*a"); f:close(); return s
+end
+function onOverlayUpdate()
+  if done then return OVERLAY_UPDATED end
+  done = true
+  local DIR = singeGetScriptPath():match("(.*[/\\])")
+  say("dir", DIR)
+  say("zipfile", readAll(DIR .. "Cfg/defaults.txt"))            -- only in the zip
+  say("custom", readAll(DIR .. "Custom/override.txt"))          -- only next to the .zdirk
+  local a = lfs.attributes(DIR .. "Custom")
+  say("customdir", a and a.mode)
+  local names = {}
+  for f in lfs.dir(DIR .. "Overlay") do if f ~= "." and f ~= ".." then names[#names + 1] = f end end
+  table.sort(names); say("overlay", table.concat(names, ","))
+  -- a run counter: read (none the first time), then written next to the .zdirk
+  local runs = tonumber(readAll(DIR .. "Cfg/runs.txt")) or 0
+  local h = io.output(DIR .. "Cfg/runs.txt"); io.write(tostring(runs + 1)); io.close(h); io.output(io.stdout)
+  say("runs", tonumber(readAll(DIR .. "Cfg/runs.txt")))
+  local cfg = {}
+  for f in lfs.dir(DIR .. "Cfg") do if f ~= "." and f ~= ".." then cfg[#cfg + 1] = f end end
+  table.sort(cfg); say("cfg", table.concat(cfg, ","))
+  dofile(DIR .. "Script/extra.lua")
+  say("extra", EXTRA)
+  dofile(DIR .. "Script/other.singe")                            -- only other.kimmy in the zip
+  say("renamed", OTHER)
+  local okb, eb = pcall(dofile, DIR .. "Script/broken.lua")
+  say("syntax", (not okb and tostring(eb):find("broken.lua:1:", 1, true)) and "reported" or tostring(eb))
+  local lf = loadfile(DIR .. "Script/extra.lua")
+  say("loadfile", type(lf))
+  local fnt = fontLoad(DIR .. "Fonts/font.ttf", 20)
+  say("font", fnt)
+  local snd = soundLoad(DIR .. "Sounds/beep.wav")
+  say("sound", snd)
+  dirkSetVolumeVldp(0)                                            -- only the beep in the recorded output
+  dirkSetVolumeNonVldp(100)
+  soundPlay(snd)
+  local s = spriteLoad(DIR .. "Overlay/pic.png")
+  say("sprite", spriteGetWidth(s) .. "x" .. spriteGetHeight(s))
+  local c = spriteLoad(DIR .. "Overlay/swap.png")                -- Custom/swap.png does not exist: zip's wins
+  say("swap", spriteGetWidth(c) .. "x" .. spriteGetHeight(c))
+  local f, msg = io.open(DIR .. "Cfg/nope.txt", "r")               -- nil + message, like plain Lua
+  say("nilmsg", tostring(f == nil and type(msg) == "string"))
+  local ok, e = pcall(io.output, DIR .. "Blocker/x.txt")          -- Blocker is a FILE: must fail
+  say("errname", (not ok and tostring(e):find("to 'output'", 1, true)) and "output" or tostring(e))
+  io.output(io.stdout)
+  discPlay()
+  return OVERLAY_UPDATED
+end
+function onInputPressed(what) end
+function onInputReleased(what) end

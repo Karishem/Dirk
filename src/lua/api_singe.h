@@ -15,11 +15,23 @@
 // name unchanged, since KimmyScript never asked to rename those.
 
 struct lua_State;
+struct SDL_Renderer;
+struct SDL_FRect;
 
 namespace dirk {
 
 struct EngineContext;
 
 void registerSingeApi(lua_State* L, EngineContext* ctx);
+
+// Call once after every onOverlayUpdate(): advances the overlay frame
+// counter and drops fontPrint textures not drawn for a while (see
+// EngineContext::fontPrintCache).
+void endOverlayFrame(EngineContext* ctx);
+
+// Shrinks a text rectangle wider than the current render target so it fits
+// (keeping its centre); leaves anything that already fits untouched. Used by
+// fontPrint(), exposed for tests.
+void fitTextToTarget(SDL_Renderer* renderer, SDL_FRect& r);
 
 } // namespace dirk

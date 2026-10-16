@@ -1,0 +1,180 @@
+--[[
+
+	BLANK GAME SHEET - KimmyScript v22
+
+	Every setting KimmyScript knows is listed below, with its default value.
+	A line you delete keeps that default value, so a real game only needs the
+	lines it changes: MovieFPS, the clips, the menu frames, the deaths and
+	the levels. The rest is optional.
+
+	Layout: indentation is free, "#" starts a comment, keywords can be
+	written in upper or lower case. The full list of move keywords is in
+	FICHE-mots-cles.md.
+
+]]--
+
+Sheet [[
+
+#=============================================================================
+GAME
+#=============================================================================
+
+# --- Movie (REQUIRED) -------------------------------------------------------
+  MovieFPS           23.976    # frames per second of the movie (23.976, 24, 25, 29.97...). Always a dot, never a comma.
+# RelativeFrames     no        # no: frames count from the start of the movie. Write yes only if the frames of each level count from its intro.
+
+# --- Scores -------------------------------------------------------------------
+  SCOREMOVE          700       # points for a correct move
+  BUFFMOVE           300       # added to SCOREMOVE for each difficulty above Easy
+  SCORESCENE         5000      # points for finishing a scene (each death removes DEATHPENALTY)
+  DEATHPENALTY       1000      # taken off SCORESCENE for each death in the scene
+  SCORELEVEL         20000     # points for finishing a level
+  PERFECTBONUS       10000     # points for finishing a level without dying
+  SCOREGAME          100000    # points for finishing the game
+  EXTRALIFE          0         # score needed for an extra life (0 = no extra life)
+
+# --- Game types offered in the menu (yes = offered) ---------------------------
+  AllowNormal        yes       # Normal
+  AllowLifeBar       yes       # Life Bar
+  AllowPercent       yes       # Percent
+  AllowSurvivor      yes       # Survivor
+  AllowDie           yes       # Die & Retry
+  AllowKid           yes       # Kid
+  BarSize            10        # Life Bar: size of the bar
+  BarMin             2         # Life Bar: points lost for a missed move
+  BarBonus           3         # Life Bar: correct moves needed to win 1 point back
+
+# --- Level order offered in the menu -------------------------------------------
+  AllowRandom        no        # random level order
+  AllowMap           no        # map mode (see MapStart and the Map clip)
+# MapStart           1         # only with AllowMap yes: 0 = the map comes first, 1 = after the first level
+# The tier mode is offered as soon as there is a TIERS section (see below).
+# AllowTier          no        # only to hide the tier mode although TIERS is written
+
+# --- Difficulty -----------------------------------------------------------------
+# IngameDiffchoice   no        # automatic: yes as soon as Easy, Normal and Hard are in MENU FRAMES (the player picks the difficulty on them, LEFT/RIGHT). Write no only to keep the pictures unused
+  PenalNormal        0         # input frames taken off each move in Normal
+  PenalHard          2         # ... in Hard
+  PenalExtreme       4         # ... in Extreme
+
+# --- Trophies -------------------------------------------------------------------
+  LvlTrophy3         0         # level that gives trophy 3 (0 = no trophy)
+  LvlTrophy4         0         # level that gives trophy 4 (0 = no trophy)
+
+# --- Display and options --------------------------------------------------------
+  miscR              153       # extra font colour, red (0 to 255)
+  miscG              76        # green
+  miscB              0         # blue
+  bShowFrame         yes       # show the current frame number when the game is paused
+  pathLook           2         # how the arrows of a PATH are shown, 1 to 5 (2 = blinking)
+  ForceRewind        no        # yes: the death rewind can't be changed in the options menu
+  altCfg             no        # yes: this game keeps its own save, score and options files (game2.cfg...), e.g. a "v2" of a game sharing the folder of the first one
+  FreezeDeath        yes       # yes: move without death treated with a 3s freeze plus "You lost one life" and "Get ready" blinking
+  ContinueCount      yes       # yes: automatic countdown for the continue clip
+
+# --- Order of the levels and random deaths (automatic, write only to change them) --
+# finalstage         12        # the level that ends the game. Default: the last of levels 1, 2, 3...
+# PlayOrder          1 2 3 4   # order of the levels in Sequence play. Default: 1, 2, 3...
+# RandomDeaths       20        # a "random" death only picks among the first 20. Default: all of them
+
+# --- Secret level (automatic) -----------------------------------------------------
+# It is allowed as soon as there is a LEVEL SECRET (see the end of this sheet).
+# AllowSecret        no        # only to disable a secret level that is written
+
+
+#=============================================================================
+CLIPS          # name   first frame - last frame
+#=============================================================================
+  Title              0 - 291          # title (short video with the logo)
+  Intro01            307 - 1213       # attract video 1
+  Intro02            1229 - 4334      # attract video 2 (if you have only one: repeat Title or Intro01)
+  Intro03            4350 - 9435      # attract video 3 (same)
+  IntroGame          0 - 0            # optional video played when a new game starts (0 - 0 = none)
+  GameOver           49714 - 50242    # game over (regular ending)
+  GameOverAlt        50258 - 50858    # game over, happy ending (e.g. after a high score); can repeat GameOver
+  NewHScore          50874 - 51029    # "new high score" announcement (short)
+  EnterHScore        51030 - 52299    # while the player enters his name (long enough)
+  Rankings           52300 - 52368    # top 10 (if you don't have it, repeat NewHScore)
+  Continue           52384 - 53340    # "continue?" (long enough for the player)
+  Clear              0 - 1            # after a level is cleared, can be a single frame (0 - 1 = none)
+  GetReady           0 - 1            # resurrection before playing again, like Dirk appearing in Dragon's Lair (0 - 1 = none)
+  SupDeath           0 - 1            # extra death video, like Borf laughing in Space Ace (0 - 1 = none)
+  Quit               53743 - 53802    # optional, when the player quits
+  Map                0 - 1            # map video, for the map mode (0 - 1 = none)
+  MovieEnd           49700            # last frame of the last level (one frame), for the Movie mode
+
+
+#=============================================================================
+MENU FRAMES    # still pictures; "Menus + n" = n frames after Menus
+#=============================================================================
+  Menus              49666            # first frame of the menu pictures
+  Options            Menus + 0        # background of the service menu
+  Victory            Menus + 3        # shown when the game is completed
+  Save               Menus + 6        # background of the save menu
+  Rankings           Menus + 12       # background of the top 10
+  Controls           Menus + 27       # keys / buttons, shown between the attract videos
+  Special            Menus + 30       # special moves
+  Hints              Menus + 33       # hints
+  Secret             0                # "secret level unlocked" (0 = none)
+  Trophy             0                # trophies (0 = none)
+# RankingsAlt        Menus + 20       # Percent and Die & Retry rankings. Default: same as Rankings
+# NewGame            Menus + 16       # new game screen. Default: same as Hints
+# Quit               Menus + 28       # quit screen. Default: same as Hints
+# Difficulty pictures: with Easy, Normal and Hard, the player picks the
+# difficulty on them at the start (IngameDiffchoice is then yes by itself).
+# Extreme is optional: no Extreme line = a game with three difficulties
+# (Extreme is then left out of the options menu too). Wizard.dirk marks them
+# in turn: CREATE MENU FRAME HERE, then DIFFICULTY SCREENS.
+# Easy               Menus + 18
+# Normal             Menus + 21
+# Hard               Menus + 24
+# Extreme            Menus + 27
+
+
+#=============================================================================
+DEATHS         # number   first frame - last frame   (1, 2, 3... in order)
+#=============================================================================
+     1    53743 - 53802      # name it, it helps
+     2    53818 - 53856
+     3    53872 - 53910
+
+
+#=============================================================================
+# TIERS        # one line per tier, with its level numbers.
+#              # Writing this section offers the tier mode in the menu.
+#=============================================================================
+# TIERS
+#   1 2
+#   3 4
+
+
+#=============================================================================
+LEVEL 1   First Level        # LEVEL number   title
+#=============================================================================
+  intro 9451 - 9452          # REQUIRED: the level's intro clip (or the 2 frames before the level)
+# replay 20                  # replay mode; default -1 (most games)
+# mirror 21852               # this level has a mirrored version, this many frames further
+# deathmirror 19065          # and its deaths are mirrored this many frames further
+# image 9500                 # picture of the level in the level select menu
+
+  SCENE 9453 - 10052         # SCENE first frame - last frame (a level can have several scenes)
+#   normal: start 9462       # (example) from Normal up, the scene starts at frame 9462
+       9552 - 9567   UP       1          # frames   move   death
+       9612 - 9627   B1       2
+       9672 - 9687   PATH     3
+          LEFT   > death 2               # LEFT plays death 2
+          RIGHT  > next                  # RIGHT goes on
+       9752 - 9767   RIGHT    optional   # missing it does not kill
+       9852 - 9867   LEFT     1
+          hard: 3                        # (example) from Hard up, missing it plays death 3
+
+
+#=============================================================================
+# LEVEL SECRET   Secret Level   # writing it allows the secret level
+#=============================================================================
+# LEVEL SECRET   Secret Level
+#   intro 30000 - 30001
+#   SCENE 30002 - 30501
+#        30101 - 30116   UP       1
+
+]]

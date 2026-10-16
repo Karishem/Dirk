@@ -1,0 +1,83 @@
+--[[ Your Game - your name ]]--
+
+Sheet [[
+
+GAME
+  MovieFPS           23.976
+  RelativeFrames     yes
+  altCfg             no
+
+CLIPS
+  Title              0 - 148
+  Intro01            164 - 1512
+  Intro02            1528 - 2900
+  Intro03            0 - 148
+  IntroGame          0 - 0
+  GameOver           75038 - 75120
+  GameOverAlt        75136 - 75612
+  NewHScore          75940 - 75970
+  EnterHScore        75971 - 76864
+  Rankings           76880 - 77068
+  Continue           77084 - 78163
+  Clear              75722 - 75842
+  GetReady           75627 - 75657
+  SupDeath           78179 - 78249
+  Quit               0 - 1
+  MovieEnd           74975
+
+MENU FRAMES
+  Menus              74990
+  Options            Menus + 0
+  Victory            Menus + 3
+  Save               Menus + 6
+  Rankings           Menus + 9
+  Controls           Menus + 12
+  Special            Menus + 15
+  Hints              Menus + 24
+  Secret             0
+  Trophy             0
+
+DEATHS
+     1    78270 - 78298      # falls in the pit
+     2    78314 - 78355      # eaten by the dragon
+     3    78371 - 78412
+
+LEVEL 1   Title 1
+  intro 9749 - 9849
+
+  SCENE 101 - 370
+        135 - 157     RIGHT    1
+        161 - 176     LEFT     2
+        178 - 198     B1       1
+        271 - 290     B1       1
+        298 - 318     B1       2
+
+  SCENE 371 - 500
+        390 - 400     LEFT     3
+        442 - 457     B1       3
+        477 - 497     ACTRIGHT 3
+
+LEVEL 2   Title 2
+  intro 12000 - 12020   replay 0   image 50
+
+  SCENE 21 - 900
+        100 - 115     UP       1
+        150 - 170     PATH     2
+          LEFT   > cave
+          RIGHT  > next
+          go     > bridge
+        200 - 215     DOWN     optional
+        260 - 280     MASH     3
+        320 - 335     B1       2   cave
+        400 - 420     COMBO LEFT + B1   1
+        500 - 515     UP       1   bridge
+        600 - 640     TIMED    3
+          UP     610 - 620          3
+          UP     628 - 638          3
+        700 - 715     RIGHT or B1   2
+
+LEVEL SECRET   Secret Level
+  intro 78327 - 78447
+  SCENE 121 - 400
+        150 - 165     UP       1
+]]

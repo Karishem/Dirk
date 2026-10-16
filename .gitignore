@@ -1,2 +1,32 @@
+# --- Dirk : fichiers à NE PAS mettre sur GitHub ---
+
+# Le Wizard (src/lua/wizard.kimmy, WizardChunk.h, tools/embed_wizard.py) EST publié (Cyril, 16/10/2026)
+# KimmyScript (installer/payload/KimmyScript) EST publié avec Dirk (Cyril, 16/10/2026)
+
+# Notes internes de travail
+/outils-claude/
+/CHECKLIST-DIFFUSION.md
+
+# Sorties de compilation
 /build/
+/build-*/
 *.dirkindex
+
+# Binaires générés (à publier plutôt en "Releases" GitHub)
+*.exe
+*.dll
+*.pdb
+*.zip
+*.7z
+
+# Gros fichiers ponctuels
+/installer/payload/*.pdf
+/cuts_*.mp4
+/apercu*.png
+
+# Divers Windows / éditeurs
+.vs/
+.vscode/
+*.user
+Thumbs.db
+desktop.ini

@@ -1,0 +1,5 @@
+-- Raccourci Dirk (a poser a cote de Hayate.zdirk)
+-- Double-clic dessus = lance le jeu HayatePSX.dirk qui est DANS Hayate.zdirk.
+-- Hayate.zdirk tout seul lance Hayate.dirk (le script qui porte son nom).
+zdirk = "Hayate.zdirk"
+script = "HayatePSX.dirk"
