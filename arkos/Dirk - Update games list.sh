@@ -25,6 +25,7 @@ for f in "$PORTS"/"Dirk - "*.sh; do
 done
 
 count=0
+wcount=0
 for root in /roms/dirk /roms2/dirk "$PORTS/../dirk"; do
     [ -d "$root" ] || continue
     root="$(cd "$root" && pwd)"
@@ -61,9 +62,23 @@ for root in /roms/dirk /roms2/dirk "$PORTS/../dirk"; do
             say "  $label"
             count=$((count + 1))
         done
+        # The Wizard creator, for a game it can write: a movie in Movie/ or
+        # Video/ and no .zdirk (the sheet of a .zdirk is sealed in the zip).
+        # It opens the game's sheet, or makes one when there is none yet.
+        set -- "$game"/*.zdirk
+        if [ ! -f "$1" ] && { [ -d "$game/Movie" ] || [ -d "$game/Video" ]; }; then
+            label="$(printf '%s' "$name" | tr '/:*?"<>|\\' '_________')"
+            out="$PORTS/Dirk - $label (Wizard).sh"
+            { echo "#!/bin/bash"; echo "$MARK"
+              printf 'exec %q --wizard %q\n' "$PORTS/dirk/dirk-arkos.sh" "$game"; } > "$out"
+            chmod +x "$out" 2>/dev/null
+            printf 'game\t./%s\t%s\t%s\n' "Dirk - $label (Wizard).sh" "Dirk - $(printf '%s' "$label" | tr '_' ' ') (Wizard)" "$game" >> "$LIST"
+            say "  $label (Wizard)"
+            wcount=$((wcount + 1))
+        fi
     done
 done
-say "Dirk: $count game(s) in the Ports list."
+say "Dirk: $count game(s) and $wcount Wizard(s) in the Ports list."
 [ "$count" -eq 0 ] && say "No game found: put them in roms/dirk/<Game>/ (on the EASYROMS card)."
 
 # Media. EmulationStation reads ports/gamelist.xml if it exists, else the
@@ -74,7 +89,7 @@ if [ ! -f "$GL" ]; then
         [ -n "$h" ] && [ -f "$h/.emulationstation/gamelists/ports/gamelist.xml" ] && { GL="$h/.emulationstation/gamelists/ports/gamelist.xml"; break; }
     done
 fi
-if [ "$count" -gt 0 ]; then
+if [ $((count + wcount)) -gt 0 ]; then
     if command -v python3 >/dev/null 2>&1; then
         python3 "$PORTS/dirk/dirk_gamelist.py" "$GL" "$LIST" "$PORTS" 2>&1 | while IFS= read -r l; do say "$l"; done
     else

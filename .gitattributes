@@ -1,0 +1,9 @@
+# Dirk -- line endings (16/10/2026).
+# Files under installer/payload are installed exactly as they are
+# (KimmyScript, licences): Git keeps them byte for byte, so the copy on
+# GitHub, the Windows installer and the "pret a copier" packages are the
+# same files, and the KimmyScript fingerprints Dirk writes in dirk_error.txt
+# match kimmyscript-version-reference.md.
+installer/payload/** -text
+# Shell scripts run on Linux (Batocera, ArkOS): always LF.
+*.sh text eol=lf

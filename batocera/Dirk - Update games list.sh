@@ -57,6 +57,32 @@ else
 fi
 rm -f "$LIST"
 
+# The Wizard creator, one entry in this Ports folder for each game it can
+# write: a movie in Movie/ or Video/ and no .zdirk (the sheet of a .zdirk is
+# sealed in the zip). It opens the game's sheet, or makes one when there is
+# none yet. Only the entries this script wrote (marked) are replaced.
+PORTS="$(cd "$(dirname "$0")" && pwd)"
+MARK="# dirk-wizard""-entry (written by Dirk - Update games list)"
+for f in "$PORTS"/"Dirk - "*.sh; do
+    [ -f "$f" ] && grep -qF "$MARK" "$f" && rm -f "$f"
+done
+wcount=0
+for game in "$ROMS"/*/; do
+    [ -d "$game" ] || continue
+    game="${game%/}"; name="$(basename "$game")"
+    set -- "$game"/*.zdirk
+    [ -f "$1" ] && continue
+    [ -d "$game/Movie" ] || [ -d "$game/Video" ] || continue
+    label="$(printf '%s' "$name" | tr '/:*?"<>|\\' '_________')"
+    out="$PORTS/Dirk - $label (Wizard).sh"
+    { echo "#!/bin/bash"; echo "$MARK"
+      printf 'exec bash %q --wizard %q\n' "$DIRK/dirk-launch.sh" "$game"; } > "$out"
+    chmod +x "$out" 2>/dev/null
+    say "  $(pretty "$name") (Wizard)"
+    wcount=$((wcount + 1))
+done
+say "Dirk: $wcount Wizard(s) in the Ports list."
+
 # EmulationStation is waiting for this script to end: ask it to re-read
 # the game lists a moment after (Batocera's local API), in the background.
 if command -v curl >/dev/null 2>&1; then
