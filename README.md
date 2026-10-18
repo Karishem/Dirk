@@ -813,6 +813,54 @@ general-purpose system libraries again even with `PKG_CONFIG_PATH` set
 correctly. `CMakeLists.txt` passes both via `target_link_directories()` +
 `target_link_libraries()` now.
 
+## Android
+
+Dirk also runs on Android 11 and later (64-bit ARM, `arm64-v8a`): one APK
+with the same engine (`src/core/main.cpp`), a small Java launcher (game
+list, storage permission, touch controls) under `android/`, and the
+KimmyScript of `installer/payload/KimmyScript`.
+
+**Using it.** Install the APK, open Dirk and allow "All files access" when
+asked (Dirk reads games from shared storage). Put each game in its own
+folder under `Dirk/Games/` on the device, as on the PC, then pick it in the
+list. Touch buttons appear on screen and hide while a gamepad is in use.
+Devices with Nintendo-style buttons (A on the right) can set Dirk Options >
+Swap A/B X/Y. Engine messages go to `Dirk/dirk.log`.
+
+**Building.** On Linux, without Gradle:
+
+```bash
+export ANDROID_HOME=/path/to/android-sdk   # platforms;android-35, build-tools;35.0.0, ndk;28.2.13676358
+tools/build_android.sh <src-dir> <out-dir> all
+```
+
+- `<src-dir>` holds `SDL3/`, `SDL_image/`, `SDL_mixer/`, `SDL_ttf/` and
+  `ffmpeg/`: the same sources and versions as the Windows and Linux builds
+  (see `tools/build_linux_bundle_zig.sh`). A JDK 17 or later is needed.
+- Everything (SDL3 and its satellites, a minimal LGPL FFmpeg, Lua 5.1.5
+  from this repository) is linked statically into one `libmain.so`.
+- Steps can be run one at a time: `libs`, `dirk`, `apk`.
+- Without a key, the script signs with a throwaway debug key made in
+  `$WORK`, for testing only.
+- A release is built with `DIRK_UNSIGNED=1`: the script stops after
+  `zipalign` and leaves `dirk-<version>-android-arm64-unsigned.apk`,
+  `apksigner.jar` and `apksigner-NOTICE.txt` in `<out-dir>`. The key
+  holder then signs it on their own machine with a JDK:
+
+  ```bash
+  java -jar apksigner.jar sign --ks <keystore> --ks-key-alias dirk \
+      --out dirk-<version>-android-arm64.apk dirk-<version>-android-arm64-unsigned.apk
+  ```
+
+- `DIRK_KEYSTORE=<file>` and `DIRK_KS_PASS=<password>` (alias `dirk`) sign
+  directly instead. `DIRK_VERSION_NAME` and `DIRK_VERSION_CODE` set the
+  version.
+- **Never commit a keystore**: `.gitignore` excludes `*.keystore`, `*.jks`,
+  `*.apk` and `*.idsig`.
+
+Third-party licenses for the APK: `android/THIRD_PARTY_NOTICES.txt` and
+`android/Licenses/` (the GPL text is copied from `LICENSE` at build time).
+
 ## Layout
 
 - `src/video/` -- `VideoSource`: ffmpeg-backed frame-accurate decode + seek,

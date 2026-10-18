@@ -19,6 +19,12 @@
 *.zip
 *.7z
 
+# Android (18/10/2026) : APK et, SURTOUT, cles de signature -- jamais sur GitHub
+*.apk
+*.idsig
+*.keystore
+*.jks
+
 # Gros fichiers ponctuels
 /installer/payload/*.pdf
 /cuts_*.mp4

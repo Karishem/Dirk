@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dirk</string>
+    <string name="permission_text">Dirk needs access to all files to read your games and save your progress.</string>
+    <string name="permission_button">Allow file access</string>
+    <string name="installing">Installing KimmyScript…</string>
+    <string name="install_failed">Install failed: %1$s</string>
+    <string name="games_folder">%1$s</string>
+    <string name="no_games">No games yet. Copy game folders or .zdirk files to %1$s</string>
+    <string name="change_folder">Folder</string>
+    <string name="refresh">Refresh</string>
+    <string name="folder_prompt">Games folder</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="play">Play</string>
+    <string name="play_version">Play %1$s</string>
+    <string name="wizard">Wizard</string>
+    <string name="no_movie">Wizard needs a video in Movie.</string>
+    <string name="up">..</string>
+    <string name="no_game_given">No game given.</string>
+    <string name="touch_auto">Touch: Auto</string>
+    <string name="touch_on">Touch: On</string>
+    <string name="touch_off">Touch: Off</string>
+</resources>

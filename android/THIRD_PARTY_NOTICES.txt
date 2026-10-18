@@ -1,0 +1,114 @@
+Dirk -- third-party software notices
+====================================
+
+Dirk for Android (the APK, whose engine is lib/arm64-v8a/libmain.so) is
+built on the free and open-source components listed below. Each one keeps
+its own license; the full license texts are in the "Licenses" folder next
+to this file (copied to Dirk/Licenses on the device).
+
+
+Dirk itself
+-----------
+Dirk (the engine, with its built-in Wizard, and the Android launcher) and
+the KimmyScript installed with it are free software, under the GNU General
+Public License, version 3 or (at your option) any later version --
+Licenses/GPL-3.0.txt
+Source code: https://github.com/Karishem/Dirk
+
+
+SDL3, SDL3_image, SDL3_mixer, SDL3_ttf
+--------------------------------------
+Simple DirectMedia Layer and its companion libraries, including SDL's
+Android Java classes (org.libsdl.app).
+Copyright (C) 1997-2026 Sam Lantinga and contributors.
+License: zlib -- Licenses/SDL3.txt, SDL3_image.txt, SDL3_mixer.txt,
+SDL3_ttf.txt
+https://www.libsdl.org/
+
+
+FFmpeg (libavformat, libavcodec, libavutil, libswscale, libswresample)
+---------------------------------------------------------------------
+Video and audio decoding.
+Copyright (C) the FFmpeg developers.
+License: GNU Lesser General Public License, version 2.1 or later --
+Licenses/LGPL-2.1.txt
+Version used: FFmpeg 7.1.5, branch release/7.1 at commit
+17638a3a3cbd2e3f8098ee091669fa854453ef9e (10 September 2026), built as
+a minimal decode-only configuration (no GPL or nonfree components).
+FFmpeg is not modified by Dirk; it is linked into libmain.so. Its source
+code is available from https://github.com/FFmpeg/FFmpeg (that commit)
+and https://ffmpeg.org/download.html. The build script, with the exact
+configure options, is tools/build_android.sh in Dirk's source code.
+
+
+FreeType (inside SDL3_ttf)
+---------------------------
+Portions of this software are copyright (C) The FreeType Project
+(https://freetype.org). All rights reserved.
+License: FreeType License -- Licenses/FreeType-FTL.txt
+
+
+HarfBuzz, plutosvg, plutovg (inside SDL3_ttf)
+--------------------------------------------
+Text shaping and colour-font support.
+HarfBuzz: Copyright the HarfBuzz authors. License: "Old MIT" --
+Licenses/HarfBuzz.txt. https://harfbuzz.github.io/
+plutosvg / plutovg: Copyright Samuel Ugochukwu. License: MIT --
+Licenses/plutosvg.txt, Licenses/plutovg.txt.
+https://github.com/sammycage/plutosvg
+
+
+Lua 5.1
+-------
+Scripting language that runs the games' scripts (5.1.5, linked in).
+Copyright (C) 1994-2012 Lua.org, PUC-Rio.
+License: MIT -- Licenses/Lua-5.1.txt
+https://www.lua.org/
+
+
+DejaVu Sans Bold (KimmyScript/Cfg/dirk_loading_font.ttf)
+--------------------------------------------------------
+Dirk's own on-screen text: loading screen, joystick wizard, error banner
+and subtitles. Distributed unmodified.
+Copyright (C) 2003 Bitstream, Inc. (Bitstream Vera); DejaVu changes are in
+the public domain; Arev glyphs Copyright (C) 2006 Tavmjong Bah.
+License: Bitstream Vera Fonts license / Arev Fonts license --
+Licenses/DejaVu-Fonts.txt
+https://dejavu-fonts.github.io/
+
+
+miniz
+-----
+Reads zipped games (.zdirk).
+Copyright 2013-2014 RAD Game Tools and Valve Software; Copyright
+2010-2014 Rich Geldreich and Tenacious Software LLC.
+License: MIT -- Licenses/miniz.txt
+https://github.com/richgel999/miniz (version 3.0.2, not modified)
+
+
+libpng and zlib (inside SDL3_image)
+-----------------------------------
+Read PNG images. Distributed unmodified.
+libpng: Copyright (c) 1995-2025 The PNG Reference Library Authors and
+others. License: PNG Reference Library License version 2 -- Licenses/libpng.txt
+zlib: Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler. License:
+zlib -- Licenses/zlib.txt
+
+
+stb_image, stb_vorbis, dr_wav, dr_mp3, dr_flac (inside SDL3_image / SDL3_mixer)
+------------------------------------------------------------------------------
+JPEG images and Ogg Vorbis / WAV / MP3 / FLAC sounds. Public domain (or
+MIT-0 / MIT, at the user's choice), by Sean Barrett and David Reid.
+
+
+LLVM libc++ (inside libmain.so)
+-------------------------------
+C++ runtime, from the Android NDK.
+License: Apache License 2.0 with LLVM Exceptions (no notice required in
+binary form). https://llvm.org/
+
+
+Games
+-----
+Games downloaded or installed separately come with their own licenses
+and are not covered by this file.

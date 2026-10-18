@@ -78,6 +78,11 @@ extern "C" {
 #include <unistd.h> // dup2/fileno -- DIRK_LOG_FILE's POSIX-side redirection
 #endif
 
+#ifdef __ANDROID__
+// Android: main() below becomes SDL_main, called by SDLActivity from libmain.so.
+#include <SDL3/SDL_main.h>
+#endif
+
 namespace {
 
 // Gates every routine/informational "[dirk] ..." print that isn't itself a
@@ -134,6 +139,13 @@ void applyFullscreen(SDL_Window* window, bool on, int windowedW, int windowedH) 
     }
     SDL_SetWindowFullscreen(window, true);
     SDL_SyncWindow(window); // waits (bounded) for the window manager's answer
+#ifdef __ANDROID__
+    // Android: the window is the app's whole screen. The system hides its
+    // bars a moment later and the picture follows the new size (the render
+    // rects are recomputed every frame); the borderless fallback below would
+    // leave fullscreen and bring the bars back.
+    return;
+#endif
     const SDL_DisplayID display = SDL_GetDisplayForWindow(window);
     SDL_Rect bounds{};
     if (!display || !SDL_GetDisplayBounds(display, &bounds) || bounds.w <= 0 || bounds.h <= 0) return;

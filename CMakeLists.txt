@@ -92,6 +92,14 @@ if(DIRK_BUNDLED_LUA)
         target_compile_definitions(dirk_lua51 PRIVATE LUA_USE_POSIX)
         target_link_libraries(dirk_lua51 PUBLIC m)
     endif()
+    # Android (2026-10-17): the NDK builds with _FORTIFY_SOURCE=2, whose
+    # checks take Lua's strings (text stored right after a TString, see
+    # getstr() in lobject.h) for zero-length buffers and abort the game at
+    # the first garbage collection ("FORTIFY: strchr: prevented read past
+    # end of buffer", lgc.c). Turned off for Lua alone.
+    if(ANDROID)
+        target_compile_options(dirk_lua51 PRIVATE -U_FORTIFY_SOURCE)
+    endif()
     # The bundled luac, for tools/embed_wizard.py where no luac5.1 is
     # installed (not built by default): cmake --build <dir> --target dirk_luac
     add_executable(dirk_luac EXCLUDE_FROM_ALL ${_dirk_lua_dir}/luac.c ${_dirk_lua_dir}/print.c)
@@ -234,6 +242,18 @@ endif()
 # but wired up so the project is a real, runnable skeleton.
 add_executable(dirk src/core/main.cpp)
 target_link_libraries(dirk PRIVATE dirk_core)
+
+# Android (2026-10-17): the same main.cpp, built as libmain.so, which SDL's
+# Java side (SDLActivity, see android/) loads and whose SDL_main it calls.
+# SDL3 is linked statically in it: -u JNI_OnLoad keeps SDL's JNI entry
+# point, which nothing else in Dirk refers to; -Bsymbolic lets FFmpeg's
+# aarch64 assembly reach its own tables from inside a shared library.
+# tools/build_android.sh builds it and packs the APK.
+if(ANDROID)
+    add_library(main SHARED src/core/main.cpp)
+    target_link_libraries(main PRIVATE dirk_core android log)
+    target_link_options(main PRIVATE -Wl,-u,JNI_OnLoad -Wl,--no-undefined -Wl,-Bsymbolic)
+endif()
 
 # std::thread for main.cpp's loading-screen animation, which runs on the
 # main thread alongside VideoSource::finishOpening() (the potentially-slow
